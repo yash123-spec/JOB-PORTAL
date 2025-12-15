@@ -1,0 +1,35 @@
+the functionality i need to add in job portal based on my backend:
+
+1]filters for job search: 
+
+| Filter     | UI Element                               | Frontend State Variable | Query Key  |
+| ---------- | ---------------------------------------- | ----------------------- | ---------- |
+| Search Bar | Input field                              | `search`                | `search`   |
+| Job Type   | Dropdown (`On-site`, `Hybrid`, `Remote`) | `type`                  | `type`     |
+| Job Time   | Dropdown (`Full-time`, `Part-time`)      | `jobTime`               | `jobTime`  |
+| Location   | Input or Dropdown                        | `location`              | `location` |
+| Company    | Dropdown or Search                       | `company`               | `company`  |
+| Pagination | Buttons (Next / Prev)                    | `page`                  | `page`     |
+
+
+
+2]Applying for job:
+
+all jobs-> filter-> list of filtered job with apply button if already applied then show withdraw application(different page)->after clicked detail of particular job(again apply button for final apply)->open modal for resume-> upload button-> submit->if no error applied successfully-> if error then redirect My(user's) Applications Page (/my-applications)
+
+Lists all jobs the user has applied for with status:
+
+Pending / Reviewed / Rejected / Accepted(and if it is acepted show withdraw application button)
+
+
+3]bookmarked/saved jobs:
+
+user-> click on save -> redirect to bookmarked jobs(different page)
+
+4] user profile page..for updating his/her details
+
+5] login,logout,register page
+
+6] Responsive Navbar with Role-based Links
+
+
