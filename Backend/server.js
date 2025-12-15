@@ -48,6 +48,7 @@ app.get("/", (req, res) => {
 })
 
 // Routes
+// Routes
 app.use("/api/v1/user", router)
 app.use("/api/v1", jobRouter)
 app.use("/api/v1", adminRouter)
@@ -56,18 +57,16 @@ app.use("/api/v1", messageRouter)
 app.use("/api/auth", authRouter)  // OAuth and OTP routes
 app.use("/api/admin/recruiters", recruiterApprovalRouter)  // Admin approval routes
 
+// Connect to DB immediately for Vercel serverless
+connectDB().catch(err => console.error('MongoDB connection error:', err));
 
-
-connectDB()
-    .then(() => {
-        app.listen(process.env.PORT || 8000, () => {
-            console.log(`Server is running on PORT:${process.env.PORT}`)
-        })
-    })
-
-    .catch((error) => {
-        console.log(`Connection failed:${error.message}`)
-    })
+// Start server only in non-serverless environment
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = process.env.PORT || 8000;
+    app.listen(PORT, () => {
+        console.log(`Server is running on PORT:${PORT}`)
+    });
+}
 
 // Export for Vercel serverless
 export default app
