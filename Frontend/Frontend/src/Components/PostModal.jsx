@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import moment from "moment";
 import { posts } from "../assets/FeedDummy";
-import { users } from "../assets/Dummy"; // reuse your existing users dummy
+import { users } from "../assets/dummy.js";
 import { X } from "lucide-react";
 
 /**
