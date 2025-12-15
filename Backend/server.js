@@ -33,6 +33,20 @@ app.use(cookieParser())
 // Initialize Passport
 app.use(passport.initialize())
 
+// Root route for health check
+app.get("/", (req, res) => {
+    res.json({
+        message: "Job Portal API is running",
+        status: "success",
+        endpoints: {
+            users: "/api/v1/user",
+            jobs: "/api/v1/jobs",
+            admin: "/api/v1/admin",
+            auth: "/api/auth"
+        }
+    })
+})
+
 // Routes
 app.use("/api/v1/user", router)
 app.use("/api/v1", jobRouter)
@@ -54,3 +68,6 @@ connectDB()
     .catch((error) => {
         console.log(`Connection failed:${error.message}`)
     })
+
+// Export for Vercel serverless
+export default app
