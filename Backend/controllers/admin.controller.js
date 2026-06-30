@@ -1,46 +1,49 @@
+import { AppError } from "../utils/AppError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import mongoose from "mongoose";
 import { Job } from "../models/job.model.js";
 import { User } from "../models/user.model.js";
 import { Application } from "../models/application.model.js"
-import {AuditLog} from "../models/auditLog.model.js";
+import { AuditLog } from "../models/auditLog.model.js";
 
 
 //getting all Users
 const getAllUsers = asyncHandler(async (req, res) => {
 
-    const {role, search="", page=1, limit=10} = req.query
+  const { role, search = "", page = 1, limit = 10 } = req.query
 
-const filter ={}
+  const filter = {}
 
-    if (role) {
-        filter.role = role
-    }
+  if (role) {
+    filter.role = role
+  }
 
-    if (search) {
-        filter.$or=[
-            { fullname:{$regex: search, $options:"i"}},
-            { email:{$regex: search, $options:"i"}}
-        ]
-    }
+  if (search) {
+    filter.$or = [
+      { fullname: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } }
+    ]
+  }
 
   const skip = (page - 1) * limit;
 
   const users = await User.find(filter)
-    .select("-password -refreshToken") 
+    .select("-password -refreshToken")
     .skip(skip)
     .limit(limit)
     .sort({ createdAt: -1 });
 
-  const totalUsers = await User.countDocuments();
+  const totalUsers = await User.countDocuments(filter);
 
-  res.status(200).json({
-    success: true,
-    totalUsers,
-    totalPages: Math.ceil(totalUsers / limit),
-    currentPage: page,
-    data: users,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalUsers,
+      totalPages: Math.ceil(totalUsers / limit),
+      currentPage: page,
+      data: users,
+    })
+  );
 });
 
 
@@ -50,42 +53,53 @@ const deleteUserByAdmin = asyncHandler(async (req, res) => {
 
   // 1. Validate MongoDB ObjectId
   if (!mongoose.Types.ObjectId.isValid(userId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid User ID",
-    });
+    throw new AppError(400, "Invalid User ID");
   }
 
   // 2. Prevent deleting own account
   if (req.user._id.toString() === userId) {
-    return res.status(403).json({
-      success: false,
-      message: "You cannot delete your own admin account",
-    });
+    throw new AppError(403, "You cannot delete your own admin account");
   }
 
   // 3. Find user
   const user = await User.findById(userId);
   if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found",
-    });
+    throw new AppError(404, "User not found");
   }
 
   // 4. Delete user
+  const userJobs = await Job.find({ createdBy: userId });
+  const jobIds = userJobs.map(job => job._id);
+
+  // Delete all applications for this user's jobs
+  await Application.deleteMany({ job: { $in: jobIds } });
+
+  // Delete this user's own applications
+  await Application.deleteMany({ user: userId });
+
+  // Remove their jobs from everyone's bookmarks
+  if (jobIds.length > 0) {
+    await User.updateMany(
+      { bookmarks: { $in: jobIds } },
+      { $pull: { bookmarks: { $in: jobIds } } }
+    );
+  }
+
+  // Delete all their jobs
+  await Job.deleteMany({ createdBy: userId });
+
+  // Finally delete the user
   await User.findByIdAndDelete(userId);
 
   // 5. Success response
-  return res.status(200).json({
-    success: true,
-    message: "User deleted successfully",
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {}, "User deleted successfully")
+  );
 });
 
 
 //Getting all Jobs
- const getAllJobsForAdmin = asyncHandler(async (req, res) => {
+const getAllJobsForAdmin = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const skip = (page - 1) * limit;
@@ -97,7 +111,7 @@ const deleteUserByAdmin = asyncHandler(async (req, res) => {
   if (title) filter.title = { $regex: title, $options: "i" };
   if (company) filter.company = { $regex: company, $options: "i" };
   if (type) filter.type = type;
-  if (location) filter.location = location;
+  if (location) filter.location = { $regex: location, $options: "i" };
 
   // Query jobs
   const jobs = await Job.find(filter)
@@ -107,13 +121,14 @@ const deleteUserByAdmin = asyncHandler(async (req, res) => {
 
   const totalJobs = await Job.countDocuments(filter);
 
-  res.status(200).json({
-    success: true,
-    totalJobs,
-    totalPages: Math.ceil(totalJobs / limit),
-    currentPage: page,
-    data: jobs,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalJobs,
+      totalPages: Math.ceil(totalJobs / limit),
+      currentPage: page,
+      data: jobs,
+    })
+  );
 });
 
 
@@ -123,29 +138,45 @@ const deleteJobByAdmin = asyncHandler(async (req, res) => {
 
   // 1. Validate Job ID
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid job ID",
-    });
+    throw new AppError(400, "Invalid job ID");
   }
 
   // 2. Find the job
   const job = await Job.findById(jobId);
   if (!job) {
-    return res.status(404).json({
-      success: false,
-      message: "Job not found",
-    });
+    throw new AppError(404, "Job not found");
   }
 
   // 3. Delete the job
+
+  const applications = await Application.find({ job: jobId });
+
+  // Batch delete resumes from Cloudinary
+  const publicIds = applications
+    .filter(app => app.resumeUrl)
+    .map(app =>
+      app.resumeUrl.split('/').slice(-2).join('/').split('.')[0]
+    );
+
+  if (publicIds.length > 0) {
+    try {
+      await cloudinary.api.delete_resources(publicIds, { resource_type: 'raw' });
+    } catch (error) {
+      // continue even if cloudinary fails
+    }
+  }
+
+  await Application.deleteMany({ job: jobId });
+  await User.updateMany(
+    { bookmarks: jobId },
+    { $pull: { bookmarks: jobId } }
+  );
   await Job.findByIdAndDelete(jobId);
 
   // 4. Send success response
-  res.status(200).json({
-    success: true,
-    message: "Job deleted successfully by admin",
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Job deleted successfully by admin")
+  );
 });
 
 //Update user role by Admin
@@ -155,96 +186,67 @@ const updateUserRole = asyncHandler(async (req, res) => {
 
   // 1. Validate MongoDB ObjectId
   if (!mongoose.Types.ObjectId.isValid(userId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid User ID",
-    });
+    throw new AppError(400, "Invalid User ID");
   }
 
   // 2. Check for allowed roles
   const validRoles = ["candidate", "recruiter"];
   if (!validRoles.includes(role)) {
-    return res.status(400).json({
-      success: false,
-      message: `Role must be one of: ${validRoles.join(", ")}`,
-    });
+    throw new AppError(400, `Role must be one of: ${validRoles.join(", ")}`);
   }
 
   // 3. Find user
   const user = await User.findById(userId);
   if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found",
-    });
+    throw new AppError(404, "User not found");
   }
 
-  // 4. Prevent changing to admin via API
-  if (role === "admin") {
-    return res.status(403).json({
-      success: false,
-      message: "You are not allowed to assign admin role via this route",
-    });
-  }
 
   // 5. Update role and save
   user.role = role;
   await user.save();
 
   // 6. Respond
-  res.status(200).json({
-    success: true,
-    message: "User role updated successfully",
-    data: {
+  return res.status(200).json(
+    new ApiResponse(200, {
       _id: user._id,
       fullname: user.fullname,
       email: user.email,
       role: user.role,
-    },
-  });
+    }, "User role updated successfully")
+  );
 });
 
 
 //Toggle User status(activate and deactivate)
-const toggleUserStatus = asyncHandler(async (req,res)=>{
-     const {id:userId} = req.params
-     const {isActive} = req.body
+const toggleUserStatus = asyncHandler(async (req, res) => {
+  const { id: userId } = req.params
+  const { isActive } = req.body
 
-     if (!mongoose.Types.ObjectId.isValid(userId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid user ID",
-    });
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new AppError(400, "Invalid user ID");
   }
 
   if (typeof isActive !== "boolean") {
-    return res.status(400).json({
-      success: false,
-      message: "`isActive` must be a boolean value (true or false)",
-    });
+    throw new AppError(400, "`isActive` must be a boolean value (true or false)");
   }
 
   if (req.user._id.toString() === userId) {
-    return res.status(403).json({
-      success: false,
-      message: "You cannot change your own status",
-    });
+    throw new AppError(403, "You cannot change your own status");
   }
 
-  const updatedUser = await User.findByIdAndUpdate(userId,{isActive},{new:true, runValidators: true}).select("-password -refreshToken")
-
-  if (!updatedUser) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found",
-    });
+  const userExists = await User.findById(userId);
+  if (!userExists) {
+    throw new AppError(404, "User not found");
   }
 
-  res.status(200).json({
-    success:true,
-    message:`User account has been ${isActive?"Activated":"Deactivated"} successfully!`,
-    data:updatedUser
-  })
+  const updatedUser = await User.findByIdAndUpdate(userId, { isActive }, { new: true, runValidators: true }).select("-password -refreshToken")
+
+
+
+  return res.status(200).json(
+    new ApiResponse(200, updatedUser, `User account has been ${isActive ? "Activated" : "Deactivated"} successfully!`)
+  )
 })
 
 
@@ -310,7 +312,7 @@ const getAdminStats = asyncHandler(async (req, res) => {
   const topRecruiters = await Job.aggregate([
     {
       $group: {
-        _id: "$recruiter", // recruiter user ID
+        _id: "$createdBy", // recruiter user ID
         jobCount: { $sum: 1 },
       },
     },
@@ -342,7 +344,7 @@ const getAdminStats = asyncHandler(async (req, res) => {
   const topCandidates = await Application.aggregate([
     {
       $group: {
-        _id: "$candidate",
+        _id: "$user", // candidate user ID
         applicationCount: { $sum: 1 },
       },
     },
@@ -370,25 +372,22 @@ const getAdminStats = asyncHandler(async (req, res) => {
     },
   ]);
 
-  res.status(200).json({
-    success: true,
-    data: {
+  return res.status(200).json(
+    new ApiResponse(200, {
       totalUsers,
       totalJobs,
       applicationsPerJob,
       weeklySignups,
       topRecruiters,
       topCandidates,
-    },
-  });
+    })
+  );
 });
 
 //get Audit Logs
 const getAuditLogs = asyncHandler(async (req, res) => {
   // 1. Protect route — only for admins
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ success: false, message: "Access denied" });
-  }
+
 
   // 2. Extract query params for filtering and pagination
   const { action, userId, startDate, endDate, page = 1, limit = 10 } = req.query;
@@ -418,17 +417,20 @@ const getAuditLogs = asyncHandler(async (req, res) => {
     .limit(Number(limit));
 
   // 6. Respond
-  res.status(200).json({
-    success: true,
-    data: logs,
-    pagination: {
-      total: totalLogs,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(totalLogs / limit),
-    },
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {
+      data: logs,
+      pagination: {
+        total: totalLogs,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(totalLogs / limit),
+      },
+    })
+  );
 });
 
-export {getAllUsers, deleteUserByAdmin,getAllJobsForAdmin,deleteJobByAdmin, 
-    updateUserRole,toggleUserStatus,getAdminStats,getAuditLogs}
+export {
+  getAllUsers, deleteUserByAdmin, getAllJobsForAdmin, deleteJobByAdmin,
+  updateUserRole, toggleUserStatus, getAdminStats, getAuditLogs
+}

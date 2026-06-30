@@ -4,6 +4,8 @@ dotenv.config({
 })
 
 import connectDB from "./config/db.js";
+import http from "http";
+import { initSocket } from "./config/socket.js";
 import express from "express";
 import cors from "cors"
 import cookieParser from "cookie-parser"
@@ -14,6 +16,7 @@ import notificationRouter from "./routes/notification.routes.js"
 import messageRouter from "./routes/message.routes.js"
 import authRouter from "./routes/auth.routes.js"
 import recruiterApprovalRouter from "./routes/recruiterApproval.routes.js"
+import { errorHandler } from "./middlewares/error.middleware.js";
 
 // Import passport AFTER dotenv is loaded
 import passport from "./config/passport.js"
@@ -42,7 +45,7 @@ app.get("/", (req, res) => {
             users: "/api/v1/user",
             jobs: "/api/v1/jobs",
             admin: "/api/v1/admin",
-            auth: "/api/auth"
+            auth: "/api/v1/auth"
         }
     })
 })
@@ -50,12 +53,15 @@ app.get("/", (req, res) => {
 // Routes
 // Routes
 app.use("/api/v1/user", router)
+app.use("/api/auth", authRouter)  // Google OAuth routes
 app.use("/api/v1", jobRouter)
 app.use("/api/v1", adminRouter)
 app.use("/api/v1", notificationRouter)
 app.use("/api/v1", messageRouter)
-app.use("/api/auth", authRouter)  // OAuth and OTP routes
-app.use("/api/admin/recruiters", recruiterApprovalRouter)  // Admin approval routes
+app.use("/api/v1/admin/recruiters", recruiterApprovalRouter)  // Admin approval routes
+
+// Error Handling Middleware
+app.use(errorHandler);
 
 // Connect to DB immediately for Vercel serverless
 connectDB().catch(err => console.error('MongoDB connection error:', err));
@@ -63,8 +69,11 @@ connectDB().catch(err => console.error('MongoDB connection error:', err));
 // Start server only in non-serverless environment
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 8000;
-    app.listen(PORT, () => {
-        console.log(`Server is running on PORT:${PORT}`)
+    // Use an HTTP server so Socket.io can attach for real-time chat
+    const httpServer = http.createServer(app);
+    initSocket(httpServer);
+    httpServer.listen(PORT, () => {
+        console.log(`Server is running on PORT:${PORT} (with Socket.io)`)
     });
 }
 

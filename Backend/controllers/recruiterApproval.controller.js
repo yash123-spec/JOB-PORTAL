@@ -2,6 +2,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
 import RecruiterApproval from "../models/recruiterApproval.model.js";
 import { sendApprovalEmail, sendRejectionEmail } from "../utils/sendEmail.js";
+import { AppError } from "../utils/AppError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 
 // Get all pending recruiter applications
 export const getPendingRecruiters = asyncHandler(async (req, res) => {
@@ -24,16 +26,15 @@ export const getPendingRecruiters = asyncHandler(async (req, res) => {
 
     const total = await RecruiterApproval.countDocuments(query);
 
-    res.status(200).json({
-        success: true,
-        data: recruiters,
+    res.status(200).json(new ApiResponse(200, {
+        recruiters,
         pagination: {
             total,
             page: parseInt(page),
             limit: parseInt(limit),
             pages: Math.ceil(total / limit)
         }
-    });
+    }));
 });
 
 // Get single recruiter application details
@@ -46,16 +47,10 @@ export const getRecruiterDetails = asyncHandler(async (req, res) => {
         .populate('rejectedBy', 'fullname email');
 
     if (!recruiter) {
-        return res.status(404).json({
-            success: false,
-            message: "Recruiter application not found"
-        });
+        throw new AppError(404, "Recruiter application not found");
     }
 
-    res.status(200).json({
-        success: true,
-        data: recruiter
-    });
+    res.status(200).json(new ApiResponse(200, recruiter));
 });
 
 // Approve recruiter
@@ -67,17 +62,11 @@ export const approveRecruiter = asyncHandler(async (req, res) => {
     const recruiterApproval = await RecruiterApproval.findById(id).populate('user');
 
     if (!recruiterApproval) {
-        return res.status(404).json({
-            success: false,
-            message: "Recruiter application not found"
-        });
+        throw new AppError(404, "Recruiter application not found");
     }
 
     if (recruiterApproval.status === 'approved') {
-        return res.status(400).json({
-            success: false,
-            message: "Recruiter already approved"
-        });
+        throw new AppError(400, "Recruiter already approved");
     }
 
     // Update recruiter approval record
@@ -102,11 +91,7 @@ export const approveRecruiter = asyncHandler(async (req, res) => {
         // Don't fail the approval if email fails
     }
 
-    res.status(200).json({
-        success: true,
-        message: "Recruiter approved successfully",
-        data: recruiterApproval
-    });
+    res.status(200).json(new ApiResponse(200, recruiterApproval, "Recruiter approved successfully"));
 });
 
 // Reject recruiter with custom block duration
@@ -116,33 +101,21 @@ export const rejectRecruiter = asyncHandler(async (req, res) => {
     const adminId = req.user._id;
 
     if (!rejectionReason) {
-        return res.status(400).json({
-            success: false,
-            message: "Rejection reason is required"
-        });
+        throw new AppError(400, "Rejection reason is required");
     }
 
     if (!blockDuration || !['1week', '2weeks', '1month', '2months', 'permanent', 'none'].includes(blockDuration)) {
-        return res.status(400).json({
-            success: false,
-            message: "Valid block duration is required (1week, 2weeks, 1month, 2months, permanent, or none)"
-        });
+        throw new AppError(400, "Valid block duration is required (1week, 2weeks, 1month, 2months, permanent, or none)");
     }
 
     const recruiterApproval = await RecruiterApproval.findById(id).populate('user');
 
     if (!recruiterApproval) {
-        return res.status(404).json({
-            success: false,
-            message: "Recruiter application not found"
-        });
+        throw new AppError(404, "Recruiter application not found");
     }
 
     if (recruiterApproval.status === 'approved') {
-        return res.status(400).json({
-            success: false,
-            message: "Cannot reject an approved recruiter"
-        });
+        throw new AppError(400, "Cannot reject an approved recruiter");
     }
 
     // Update recruiter approval record
@@ -167,11 +140,7 @@ export const rejectRecruiter = asyncHandler(async (req, res) => {
         // Don't fail the rejection if email fails
     }
 
-    res.status(200).json({
-        success: true,
-        message: "Recruiter rejected successfully",
-        data: recruiterApproval
-    });
+    res.status(200).json(new ApiResponse(200, recruiterApproval, "Recruiter rejected successfully"));
 });
 
 // Delete recruiter application (soft delete - mark as rejected permanently)
@@ -181,10 +150,7 @@ export const deleteRecruiterApplication = asyncHandler(async (req, res) => {
     const recruiterApproval = await RecruiterApproval.findById(id);
 
     if (!recruiterApproval) {
-        return res.status(404).json({
-            success: false,
-            message: "Recruiter application not found"
-        });
+        throw new AppError(404, "Recruiter application not found");
     }
 
     // Delete the application
@@ -195,10 +161,7 @@ export const deleteRecruiterApplication = asyncHandler(async (req, res) => {
         await User.findByIdAndDelete(recruiterApproval.user);
     }
 
-    res.status(200).json({
-        success: true,
-        message: "Recruiter application deleted successfully"
-    });
+    res.status(200).json(new ApiResponse(200, null, "Recruiter application deleted successfully"));
 });
 
 // Get recruiter statistics for admin dashboard
@@ -212,16 +175,13 @@ export const getRecruiterStats = asyncHandler(async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(5);
 
-    res.status(200).json({
-        success: true,
-        data: {
-            stats: {
-                pending,
-                approved,
-                rejected,
-                total: pending + approved + rejected
-            },
-            recentApplications
-        }
-    });
+    res.status(200).json(new ApiResponse(200, {
+        stats: {
+            pending,
+            approved,
+            rejected,
+            total: pending + approved + rejected
+        },
+        recentApplications
+    }));
 });

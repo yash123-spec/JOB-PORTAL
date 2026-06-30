@@ -1,11 +1,12 @@
 import express from "express";
-import { registerUser, loginUser, getCurrentUser, refreshAccessToken, logoutUser, updateProfile, cleanupOrphanedBookmarks } from "../controllers/user.controller.js";
+import { loginUser, getCurrentUser, refreshAccessToken, logoutUser, updateProfile, cleanupOrphanedBookmarks } from "../controllers/user.controller.js";
+import { recruiterRegister } from "../controllers/auth.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { uploadProfilePicture } from "../middlewares/multer.middleware.js";
 
 const router = express.Router()
 
-router.post("/register", registerUser)
+router.post("/register", recruiterRegister)
 router.post("/login", loginUser)
 router.get("/me", verifyJWT, getCurrentUser)
 router.post("/refreshAccessToken", refreshAccessToken)

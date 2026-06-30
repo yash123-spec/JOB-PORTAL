@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Hide scrollbar (still scrollable) — used inside the chat message list and textarea */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge */
+}
