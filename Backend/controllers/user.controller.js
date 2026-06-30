@@ -65,14 +65,14 @@ const loginUser = asyncHandler(async (req, res) => {
     .cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 15 * 60 * 1000
     })
 
     .cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000
     })
 
@@ -153,14 +153,14 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     res.cookie("accessToken", newAccessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 15 * 60 * 1000
     });
 
     res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000
     });
 
@@ -192,12 +192,12 @@ const logoutUser = asyncHandler(async (req, res) => {
     .clearCookie("accessToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: "lax"
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
     .clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: "lax"
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
     .json(new ApiResponse(200, {}, "User logout successfully!!"))
 })
