@@ -67,15 +67,15 @@ app.use(errorHandler);
 connectDB().catch(err => console.error('MongoDB connection error:', err));
 
 // Start server only in non-serverless environment
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = process.env.PORT || 8000;
-    // Use an HTTP server so Socket.io can attach for real-time chat
-    const httpServer = http.createServer(app);
-    initSocket(httpServer);
-    httpServer.listen(PORT, () => {
-        console.log(`Server is running on PORT:${PORT} (with Socket.io)`)
-    });
-}
+
+const PORT = process.env.PORT || 8000;
+// Use an HTTP server so Socket.io can attach for real-time chat
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+httpServer.listen(PORT, () => {
+    console.log(`Server is running on PORT:${PORT}`)
+});
+
 
 // Export for Vercel serverless
 export default app
