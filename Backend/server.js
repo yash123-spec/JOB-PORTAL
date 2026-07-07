@@ -42,6 +42,20 @@ app.use(cookieParser())
 // Initialize Passport
 app.use(passport.initialize())
 
+
+//server logging middleware
+app.use((req, res, next) => {
+    const start = performance.now();
+
+    res.on("finish", () => {
+        console.log(
+            `${req.method} ${req.originalUrl} - ${(performance.now() - start).toFixed(2)} ms`
+        );
+    });
+
+    next();
+});
+
 // Root route for health check
 app.get("/", (req, res) => {
     res.json({
@@ -56,18 +70,6 @@ app.get("/", (req, res) => {
     })
 })
 
-//server logging middleware
-app.use((req, res, next) => {
-    const start = performance.now();
-
-    res.on("finish", () => {
-        console.log(
-            `${req.method} ${req.originalUrl} - ${(performance.now() - start).toFixed(2)} ms`
-        );
-    });
-
-    next();
-});
 
 // Routes
 // Routes
