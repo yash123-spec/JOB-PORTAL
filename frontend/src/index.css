@@ -1,0 +1,241 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+/* ============================================================
+   DESIGN SYSTEM — tokens
+   ============================================================ */
+@theme {
+  /* Brand ramp */
+  --color-brand-50:  #f1faf8;
+  --color-brand-100: #d7efeb;
+  --color-brand-200: #b0e0d8;
+  --color-brand-300: #7fcabd;
+  --color-brand-400: #4fb0a1;
+  --color-brand: #309689;
+  --color-brand-dark: #26786d;
+  --color-brand-darker: #1f6259;
+  --color-brand-light: #e7f4f2;
+  --color-brand-mint: #eef6f4;
+
+  /* Neutrals / ink */
+  --color-ink: #0e0e0e;
+  --color-ink-soft: #1a1a1a;
+
+  /* Typography */
+  --font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Shadow scale (soft, layered — Stripe/Linear feel) */
+  --shadow-soft: 0 1px 2px rgb(16 24 40 / 0.04), 0 2px 8px -2px rgb(16 24 40 / 0.06);
+  --shadow-card: 0 2px 4px rgb(16 24 40 / 0.04), 0 8px 24px -8px rgb(16 24 40 / 0.10);
+  --shadow-lift: 0 12px 32px -8px rgb(16 24 40 / 0.16), 0 4px 8px -4px rgb(16 24 40 / 0.08);
+  --shadow-glow: 0 8px 28px -6px rgb(48 150 137 / 0.45);
+
+  /* Easing */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: var(--color-brand);
+    color: #fff;
+  }
+}
+
+/* ============================================================
+   COMPONENTS — reusable primitives
+   ============================================================ */
+@layer components {
+  /* ---- Buttons ---- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    transition: transform 0.2s var(--ease-out-quart),
+                box-shadow 0.2s var(--ease-out-quart),
+                background-color 0.2s var(--ease-out-quart),
+                opacity 0.2s var(--ease-out-quart);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-primary {
+    padding: 0.75rem 1.5rem;
+    color: #fff;
+    background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-dark) 100%);
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-primary:hover {
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    padding: 0.75rem 1.5rem;
+    color: var(--color-ink);
+    background: #fff;
+    border: 1px solid rgb(16 24 40 / 0.10);
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-secondary:hover {
+    border-color: var(--color-brand-300);
+    color: var(--color-brand-dark);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    padding: 0.75rem 1.25rem;
+    color: var(--color-ink);
+    background: transparent;
+  }
+  .btn-ghost:hover { background: rgb(16 24 40 / 0.05); }
+
+  /* ---- Inputs ---- */
+  .input-field {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    font-size: 0.925rem;
+    color: var(--color-ink);
+    background: #fff;
+    border: 1px solid rgb(16 24 40 / 0.12);
+    border-radius: 0.75rem;
+    transition: border-color 0.2s var(--ease-out-quart),
+                box-shadow 0.2s var(--ease-out-quart);
+    outline: none;
+  }
+  .input-field::placeholder { color: rgb(16 24 40 / 0.40); }
+  .input-field:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgb(48 150 137 / 0.15);
+  }
+
+  /* ---- Cards ---- */
+  .card {
+    background: #fff;
+    border: 1px solid rgb(16 24 40 / 0.06);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+  }
+  .card-hover {
+    transition: transform 0.3s var(--ease-out-quart),
+                box-shadow 0.3s var(--ease-out-quart),
+                border-color 0.3s var(--ease-out-quart);
+  }
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lift);
+    border-color: rgb(48 150 137 / 0.30);
+  }
+
+  .glass {
+    background: rgb(255 255 255 / 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgb(255 255 255 / 0.5);
+  }
+
+  /* ---- Badges ---- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    line-height: 1.2;
+  }
+  .badge-brand   { background: var(--color-brand-light); color: var(--color-brand-darker); }
+  .badge-success { background: #dcfce7; color: #166534; }
+  .badge-warning { background: #fef3c7; color: #92400e; }
+  .badge-danger  { background: #fee2e2; color: #991b1b; }
+  .badge-neutral { background: #f1f5f9; color: #334155; }
+
+  /* ---- Skeleton loader ---- */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: #e9edf0;
+    border-radius: 0.5rem;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.65), transparent);
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+/* ============================================================
+   UTILITIES — animations
+   ============================================================ */
+@layer utilities {
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  .animate-fade-up { animation: fade-up 0.6s var(--ease-out-quart) both; }
+  .animate-fade-in { animation: fade-in 0.5s var(--ease-out-quart) both; }
+  .animate-scale-in { animation: scale-in 0.25s var(--ease-out-quart) both; }
+
+  /* Scroll reveal (toggled by <Reveal /> via IntersectionObserver) */
+  .reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    transition: opacity 0.7s var(--ease-out-quart), transform 0.7s var(--ease-out-quart);
+    will-change: opacity, transform;
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Hide scrollbar (still scrollable) — chat message list & textarea */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+}

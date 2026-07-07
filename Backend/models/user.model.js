@@ -26,7 +26,7 @@ const userSchema = new Schema({
   },
   authProvider: {
     type: String,
-    enum: ['local', 'google', 'apple'],
+    enum: ['local', 'google'],
     default: 'local'
   },
   providerId: {

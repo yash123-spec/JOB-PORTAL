@@ -4,7 +4,8 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "seed:recruiters": "node scripts/seedRecruiters.js"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +14,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.7.0",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
@@ -22,10 +24,11 @@
     "multer": "^2.0.1",
     "nodemailer": "^7.0.10",
     "passport": "^0.7.0",
-    "passport-apple": "^2.0.2",
-    "passport-google-oauth20": "^2.0.0"
+    "passport-google-oauth20": "^2.0.0",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.5.0",
     "nodemon": "^3.1.10",
     "prettier": "3.6.2"
   }

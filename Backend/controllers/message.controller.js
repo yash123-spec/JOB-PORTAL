@@ -3,6 +3,9 @@ import { Conversation } from "../models/conversation.model.js";
 import { Message } from "../models/message.model.js";
 import { User } from "../models/user.model.js";
 import mongoose from "mongoose";
+import { AppError } from "../utils/AppError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { emitToUser } from "../config/socket.js";
 
 // Get all conversations for logged-in user
 const getConversations = asyncHandler(async (req, res) => {
@@ -36,10 +39,7 @@ const getConversations = asyncHandler(async (req, res) => {
         })
     );
 
-    res.status(200).json({
-        success: true,
-        data: conversationsWithUnread,
-    });
+    res.status(200).json(new ApiResponse(200, conversationsWithUnread));
 });
 
 // Get or create conversation
@@ -48,19 +48,13 @@ const getOrCreateConversation = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     if (!participantId) {
-        return res.status(400).json({
-            success: false,
-            message: "Participant ID is required",
-        });
+        throw new AppError(400, "Participant ID is required");
     }
 
     // Check if participant exists
     const participant = await User.findById(participantId);
     if (!participant) {
-        return res.status(404).json({
-            success: false,
-            message: "Participant not found",
-        });
+        throw new AppError(404, "Participant not found");
     }
 
     // Find existing conversation
@@ -86,10 +80,7 @@ const getOrCreateConversation = asyncHandler(async (req, res) => {
             .populate("relatedApplication");
     }
 
-    res.status(200).json({
-        success: true,
-        data: conversation,
-    });
+    res.status(200).json(new ApiResponse(200, conversation));
 });
 
 // Get messages for a conversation
@@ -99,10 +90,7 @@ const getMessages = asyncHandler(async (req, res) => {
     const { page = 1, limit = 50 } = req.query;
 
     if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid conversation ID",
-        });
+        throw new AppError(400, "Invalid conversation ID");
     }
 
     // Verify user is participant
@@ -112,10 +100,7 @@ const getMessages = asyncHandler(async (req, res) => {
     });
 
     if (!conversation) {
-        return res.status(404).json({
-            success: false,
-            message: "Conversation not found",
-        });
+        throw new AppError(404, "Conversation not found");
     }
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -141,13 +126,12 @@ const getMessages = asyncHandler(async (req, res) => {
         }
     );
 
-    res.status(200).json({
-        success: true,
-        data: messages.reverse(), // Reverse to show oldest first
+    res.status(200).json(new ApiResponse(200, {
+        messages: messages.reverse(), // Reverse to show oldest first
         totalMessages,
         totalPages: Math.ceil(totalMessages / limit),
         currentPage: Number(page),
-    });
+    }));
 });
 
 // Send message
@@ -157,17 +141,11 @@ const sendMessage = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     if (!content || !content.trim()) {
-        return res.status(400).json({
-            success: false,
-            message: "Message content is required",
-        });
+        throw new AppError(400, "Message content is required");
     }
 
     if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid conversation ID",
-        });
+        throw new AppError(400, "Invalid conversation ID");
     }
 
     // Verify user is participant
@@ -177,10 +155,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     }).populate("participants", "fullname");
 
     if (!conversation) {
-        return res.status(404).json({
-            success: false,
-            message: "Conversation not found",
-        });
+        throw new AppError(404, "Conversation not found");
     }
 
     // Create message
@@ -198,10 +173,12 @@ const sendMessage = asyncHandler(async (req, res) => {
     // Populate sender info
     await message.populate("sender", "fullname email profilePic role");
 
-    res.status(201).json({
-        success: true,
-        data: message,
+    // Real-time: deliver to every participant (clients dedupe by message _id)
+    conversation.participants.forEach((p) => {
+        emitToUser(p._id, "message:new", { conversationId, message });
     });
+
+    res.status(201).json(new ApiResponse(201, message));
 });
 
 // Delete conversation
@@ -210,10 +187,7 @@ const deleteConversation = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid conversation ID",
-        });
+        throw new AppError(400, "Invalid conversation ID");
     }
 
     const conversation = await Conversation.findOne({
@@ -222,10 +196,7 @@ const deleteConversation = asyncHandler(async (req, res) => {
     });
 
     if (!conversation) {
-        return res.status(404).json({
-            success: false,
-            message: "Conversation not found",
-        });
+        throw new AppError(404, "Conversation not found");
     }
 
     // Delete all messages
@@ -234,10 +205,7 @@ const deleteConversation = asyncHandler(async (req, res) => {
     // Delete conversation
     await Conversation.findByIdAndDelete(conversationId);
 
-    res.status(200).json({
-        success: true,
-        message: "Conversation deleted",
-    });
+    res.status(200).json(new ApiResponse(200, null, "Conversation deleted"));
 });
 
 // Get unread message count
@@ -258,10 +226,7 @@ const getUnreadCount = asyncHandler(async (req, res) => {
         isRead: false,
     });
 
-    res.status(200).json({
-        success: true,
-        unreadCount,
-    });
+    res.status(200).json(new ApiResponse(200, { unreadCount }));
 });
 
 export {

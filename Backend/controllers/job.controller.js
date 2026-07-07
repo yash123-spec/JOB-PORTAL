@@ -1,3 +1,5 @@
+import { AppError } from "../utils/AppError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import mongoose from "mongoose";
 import { Job } from "../models/job.model.js";
@@ -9,31 +11,38 @@ import cloudinary from "../utils/cloudinary.js"
 import { createNotification } from "./notification.controller.js";
 
 
+// Derive a Cloudinary raw public_id from a resume's secure_url.
+// URL: https://res.cloudinary.com/<cloud>/raw/upload/v123/job-portal/resumes/<file>.pdf
+// public_id must include the folder path AND the extension (raw resources keep it).
+const getResumePublicId = (resumeUrl) => {
+  const afterUpload = resumeUrl.split('/upload/')[1];
+  if (!afterUpload) return null;
+  return afterUpload.replace(/^v\d+\//, ''); // strip version, keep folders + extension
+};
+
+
+
 //jobCreation logic
 const createJob = asyncHandler(async (req, res) => {
   const { title, company, responsibilities, skills, jobTime, salaryMin, salaryMax, location, type, companyWebsite } = req.body;
 
   // Safer validation
   if ([title, company, jobTime, location, type].some(field => typeof field !== 'string' || field.trim() === '')) {
-    return res.status(400).json({ success: false, message: "All required fields must be provided!!" });
+    throw new AppError(400, "All required fields must be provided!!");
   }
 
   // Validate responsibilities and skills arrays
   if (!responsibilities || !Array.isArray(responsibilities) || responsibilities.length === 0) {
-    return res.status(400).json({ success: false, message: "At least one responsibility is required!!" });
+    throw new AppError(400, "At least one responsibility is required!!");
   }
 
   if (!skills || !Array.isArray(skills) || skills.length === 0) {
-    return res.status(400).json({ success: false, message: "At least one skill is required!!" });
+    throw new AppError(400, "At least one skill is required!!");
   }
 
   //check if user is active
   if (!req.user.isActive) {
-    return res.status(407)
-      .json({
-        success: false,
-        message: "Your account has been deactivated! Please contact support!!"
-      })
+    throw new AppError(403, "Your account has been deactivated! Please contact support!!");
   }
 
   const jobData = {
@@ -58,10 +67,7 @@ const createJob = asyncHandler(async (req, res) => {
     const max = Number(salaryMax);
 
     if (min >= max) {
-      return res.status(400).json({
-        success: false,
-        message: "Minimum salary must be less than maximum salary"
-      });
+      throw new AppError(400, "Minimum salary must be less than maximum salary");
     }
 
     jobData.salaryMin = min;
@@ -79,62 +85,44 @@ const createJob = asyncHandler(async (req, res) => {
     metadata: { jobId: job._id, title },
   });
 
-  res.status(201).json({
-    success: true,
-    data: job,
-    message: "Job posted successfully!!"
-  });
+  return res.status(201).json(
+    new ApiResponse(201, job, "Job posted successfully!!")
+  );
 });
 
 //get All Jobs
 const getAllJobs = asyncHandler(async (req, res) => {
   const {
-    company,
-    jobTime,
-    location,
-    search,
-    type,
-    salaryMin,
-    salaryMax,
-    postedDays,
-    minApplicants,
-    maxApplicants,
-    createdBy,
-    page = 1,
-    limit = 10
+    company, jobTime, location, search, type,
+    salaryMin, salaryMax, postedDays,
+    minApplicants, maxApplicants,
+    createdBy, page = 1, limit = 10, sort
   } = req.query;
 
-  const filter = {};
+  // ─── Step 1: Build $match filter (same as before) ───────────────
+  const matchFilter = {};
 
-  // Exact match filters
-  if (type) filter.type = type;
-  if (jobTime) filter.jobTime = jobTime;
-  if (createdBy) filter.createdBy = createdBy;
+  if (type) matchFilter.type = type;
+  if (jobTime) matchFilter.jobTime = jobTime;
+  if (createdBy) matchFilter.createdBy = new mongoose.Types.ObjectId(createdBy);
+  if (company) matchFilter.company = { $regex: company, $options: "i" };
+  if (location) matchFilter.location = { $regex: location, $options: "i" };
 
-  // Partial match + case-insensitive filters
-  if (company) filter.company = { $regex: company, $options: "i" };
-  if (location) filter.location = { $regex: location, $options: "i" };
-
-  // Search filter (case-insensitive regex)
   if (search) {
-    filter.$or = [
+    matchFilter.$or = [
       { title: { $regex: search, $options: "i" } },
       { company: { $regex: search, $options: "i" } },
       { responsibilities: { $elemMatch: { $regex: search, $options: "i" } } },
       { skills: { $elemMatch: { $regex: search, $options: "i" } } }
-    ]
+    ];
   }
 
-  // Salary range overlap filter
-  // User wants jobs where salary ranges intersect with their filter
-  // Overlap condition: userMin <= jobMax AND userMax >= jobMin
   if (salaryMin || salaryMax) {
     const userMin = salaryMin ? Number(salaryMin) : 0;
     const userMax = salaryMax ? Number(salaryMax) : Number.MAX_SAFE_INTEGER;
 
-    filter.$and = filter.$and || [];
-    filter.$and.push({
-      // Job MUST have numeric salary range that overlaps
+    matchFilter.$and = matchFilter.$and || [];
+    matchFilter.$and.push({
       $and: [
         { salaryMin: { $ne: null, $exists: true } },
         { salaryMax: { $ne: null, $exists: true } },
@@ -144,39 +132,71 @@ const getAllJobs = asyncHandler(async (req, res) => {
     });
   }
 
-  // Posted date filter (last X days)
   if (postedDays) {
     const daysAgo = new Date();
     daysAgo.setDate(daysAgo.getDate() - Number(postedDays));
-    filter.createdAt = { $gte: daysAgo };
+    matchFilter.createdAt = { $gte: daysAgo };
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  // ─── Step 2: Build aggregation pipeline ─────────────────────────
+  const pipeline = [
+    // Apply all standard filters first
+    { $match: matchFilter },
 
-  let jobs = await Job.find(filter)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(limit));
+    // Add applicantsCount as computed field from applicants array length
+    {
+      $addFields: {
+        applicantsCount: {
+          $size: { $ifNull: ["$applicants", []] }
+        }
+      }
+    }
+  ];
 
-  // Filter by applicants count (done after query since it's array length)
+  // Apply applicants filter INSIDE pipeline (fixes pagination bug)
   if (minApplicants || maxApplicants) {
-    jobs = jobs.filter(job => {
-      const count = job.applicants?.length || 0;
-      if (minApplicants && count < Number(minApplicants)) return false;
-      if (maxApplicants && count > Number(maxApplicants)) return false;
-      return true;
+    const applicantsFilter = {};
+    if (minApplicants) applicantsFilter.$gte = Number(minApplicants);
+    if (maxApplicants) applicantsFilter.$lte = Number(maxApplicants);
+
+    pipeline.push({
+      $match: { applicantsCount: applicantsFilter }
     });
   }
 
-  const totalJobs = await Job.countDocuments(filter);
+  // "trending" ranks by most applicants (then newest); default is newest-first
+  const sortStage = sort === "trending"
+    ? { applicantsCount: -1, createdAt: -1 }
+    : { createdAt: -1 };
 
-  res.status(200).json({
-    success: true,
-    totalJobs,
-    totalPages: Math.ceil(totalJobs / limit),
-    currentPage: Number(page),
-    data: jobs,
+  // ─── Step 3 + 4: Count AND fetch the page in ONE round-trip ──────
+  // $facet runs both branches on the same filtered dataset in a single
+  // aggregation, so we avoid a second trip to the database.
+  pipeline.push({
+    $facet: {
+      // Total matching documents (before pagination)
+      metadata: [{ $count: "total" }],
+      // The actual page of results: sort → skip → limit
+      data: [
+        { $sort: sortStage },
+        { $skip: (Number(page) - 1) * Number(limit) },
+        { $limit: Number(limit) },
+      ],
+    },
   });
+
+  const result = await Job.aggregate(pipeline);
+  const jobs = result[0]?.data || [];
+  const totalJobs = result[0]?.metadata[0]?.total || 0;
+
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalJobs,
+      totalPages: Math.ceil(totalJobs / Number(limit)),
+      currentPage: Number(page),
+      data: jobs,
+    })
+  );
 });
 
 //finding job by Id
@@ -184,29 +204,18 @@ const getJobById = asyncHandler(async (req, res) => {
   const { id } = req.params
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid Job Id!!"
-    })
+    throw new AppError(400, "Invalid Job Id!!")
   }
 
   const job = await Job.findById(id).populate("createdBy", "fullname email")
 
   if (!job) {
-    return res.status(400).json({
-      success: false,
-      message: "Job not found!!"
-    })
-
+    throw new AppError(404, "Job not found!!")
   }
 
-  res.status(201)
-    .json({
-      success: true,
-      data: job,
-      message: "Job fetched successfully!!"
-    })
-
+  return res.status(200).json(
+    new ApiResponse(200, job, "Job fetched successfully!!")
+  )
 })
 
 
@@ -216,37 +225,24 @@ const applyforJob = asyncHandler(async (req, res) => {
 
   // 1. Validate MongoDB ObjectId
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(409).json({
-      success: false,
-      message: "Invalid Job Id"
-    });
+    throw new AppError(400, "Invalid Job Id");
   }
 
   // 2. Find the job
   const job = await Job.findById(jobId)
 
   if (!job) {
-    return res.status(403).json({
-      success: false,
-      message: "Could not find the job!!"
-    });
+    throw new AppError(404, "Could not find the job!!");
   }
 
   // 3. Prevent recruiter from applying
   if (req.user.role !== "candidate") {
-    return res.status(404).json({
-      success: false,
-      message: "Only candidate can apply for the JOB!!"
-    });
+    throw new AppError(403, "Only candidate can apply for the JOB!!");
   }
 
   //check if user is active
   if (!req.user.isActive) {
-    return res.status(407)
-      .json({
-        success: false,
-        message: "Your account has been deactivated! Please contact support!!"
-      })
+    throw new AppError(403, "Your account has been deactivated! Please contact support!!");
   }
 
   // 4. Prevent duplicate applications - check Application collection
@@ -256,18 +252,12 @@ const applyforJob = asyncHandler(async (req, res) => {
   });
 
   if (existingApplication) {
-    return res.status(404).json({
-      success: false,
-      message: "You have already applied for this JOB!!"
-    });
+    throw new AppError(409, "You have already applied for this JOB!!");
   }
 
   //validate file presence
   if (!req.file) {
-    return res.status(402).json({
-      success: false,
-      message: "resume file required"
-    })
+    throw new AppError(400, "resume file required")
   }
 
   //Extraction extensions from original file name
@@ -284,7 +274,7 @@ const applyforJob = asyncHandler(async (req, res) => {
       },
       (error, result) => {
         if (error) {
-          return reject(error);
+          return reject(new AppError(500, "Failed to upload resume", error));
         }
         resolve(result);
       }
@@ -295,31 +285,17 @@ const applyforJob = asyncHandler(async (req, res) => {
 
 
 
-  let application;
-  try {
-    application = await Application.create({
-      user: req.user._id,
-      job: jobId,
-      resumeUrl: uploadedResume.secure_url,
-      status: "applied"
-    });
-
-
-  } catch (error) {
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to create application",
-      error: error.message
-    });
-  }
+  let application = await Application.create({
+    user: req.user._id,
+    job: jobId,
+    resumeUrl: uploadedResume.secure_url,
+    status: "applied"
+  });
 
 
   // Add user ID to job's applicants array
-  if (!job.applicants.includes(req.user._id)) {
-    job.applicants.push(req.user._id);
-    await job.save();
-  }
+  job.applicants.push(req.user._id);
+  await job.save();
 
   // Create notification for recruiter
   await createNotification({
@@ -340,53 +316,68 @@ const applyforJob = asyncHandler(async (req, res) => {
     metadata: { jobId, applicationId: application._id },
   });
 
-  res.status(200).json({
-    success: true,
-    message: "Job application successful!!",
-    data: {
+  return res.status(200).json(
+    new ApiResponse(200, {
       applicationId: application._id,
       resumeUrl: uploadedResume.secure_url
-    }
-  });
+    }, "Job application successful!!")
+  );
 });
 
 
 //get all Applied Jobs
 const getAppliedJobs = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const skip = (page - 1) * limit;
 
-  // Fetch applications with job details populated
-  const applications = await Application.find({ user: userId })
-    .populate('job')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
+  // Base pipeline — filters deleted jobs at DB level
+  const basePipeline = [
+    { $match: { user: new mongoose.Types.ObjectId(userId) } },
+    {
+      $lookup: {
+        from: "jobs",
+        localField: "job",
+        foreignField: "_id",
+        as: "jobData"
+      }
+    },
+    { $match: { jobData: { $ne: [] } } },  // only where job still exists
+    { $sort: { createdAt: -1 } }
+  ];
 
-  // Filter out applications where job has been deleted
-  const validApplications = applications.filter(app => app.job !== null);
+  // ✅ Count runs on same filtered pipeline
+  const countResult = await Application.aggregate([
+    ...basePipeline,
+    { $count: "total" }
+  ]);
+  const total = countResult[0]?.total || 0;
 
-  // Extract just the job data with application metadata
-  const jobs = validApplications.map(app => ({
-    ...app.job.toObject(),
-    applicationId: app._id,
-    appliedAt: app.createdAt,
-    applicationStatus: app.status,
-    resumeUrl: app.resumeUrl
-  }));
+  // ✅ Pagination applied AFTER filtering
+  const applications = await Application.aggregate([
+    ...basePipeline,
+    { $skip: skip },
+    { $limit: limit },
+    {
+      $project: {
+        job: { $arrayElemAt: ["$jobData", 0] },  // unwrap array to object
+        applicationId: "$_id",
+        appliedAt: "$createdAt",
+        applicationStatus: "$status",
+        resumeUrl: 1
+      }
+    }
+  ]);
 
-  const totalAppliedJobs = await Application.countDocuments({ user: userId });
-
-  res.status(200).json({
-    success: true,
-    totalAppliedJobs,
-    totalPages: Math.ceil(totalAppliedJobs / limit),
-    currentPage: page,
-    data: jobs,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {
+      total,                                    // ✅ number, not array
+      totalPages: Math.ceil(total / limit),     // ✅ correct
+      currentPage: page,
+      data: applications,
+    })
+  );
 });
 
 //get all candidates that had applied to particular job(Applicants)
@@ -395,29 +386,20 @@ const getJobApplicants = asyncHandler(async (req, res) => {
 
   // 1. Validate MongoDB ObjectId
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid Job ID",
-    });
+    throw new AppError(400, "Invalid Job ID");
   }
 
   // 2. Find the job
-  const job = await Job.findById(jobId).populate("createdBy", "fullName email");
+  const job = await Job.findById(jobId).populate("createdBy", "fullname email");
 
   // 3. If job not found
   if (!job) {
-    return res.status(404).json({
-      success: false,
-      message: "Job not found",
-    });
+    throw new AppError(404, "Job not found");
   }
 
   // 4. Ensure that only the recruiter who posted it can view applicants
   if (job.createdBy._id.toString() !== req.user._id.toString()) {
-    return res.status(403).json({
-      success: false,
-      message: "You are not allowed to view applicants for this job",
-    });
+    throw new AppError(403, "You are not allowed to view applicants for this job");
   }
 
   // 5. Fetch applications for this job with user details
@@ -438,11 +420,12 @@ const getJobApplicants = asyncHandler(async (req, res) => {
   }));
 
   // 7. Return the list of applicants
-  res.status(200).json({
-    success: true,
-    totalApplicants: applicants.length,
-    data: applicants,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalApplicants: applicants.length,
+      data: applicants,
+    })
+  );
 });
 
 //Edit Job
@@ -451,28 +434,19 @@ const editJob = asyncHandler(async (req, res) => {
 
   // 1. Validate ObjectId
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid Job Id!!",
-    });
+    throw new AppError(400, "Invalid Job Id!!");
   }
 
   // 2. Find Job
   const job = await Job.findById(jobId);
 
   if (!job) {
-    return res.status(404).json({
-      success: false,
-      message: "Job not found!",
-    });
+    throw new AppError(404, "Job not found!");
   }
 
   // 3. Authorization check
   if (job.createdBy.toString() !== req.user._id.toString()) {
-    return res.status(401).json({
-      success: false,
-      message: "You are not allowed to edit the job!!",
-    });
+    throw new AppError(403, "You are not allowed to edit the job!!");
   }
 
   // 4. Update fields conditionally
@@ -504,10 +478,7 @@ const editJob = asyncHandler(async (req, res) => {
     const max = Number(salaryMax);
 
     if (min >= max) {
-      return res.status(400).json({
-        success: false,
-        message: "Minimum salary must be less than maximum salary"
-      });
+      throw new AppError(400, "Minimum salary must be less than maximum salary");
     }
 
     job.salaryMin = min;
@@ -526,11 +497,9 @@ const editJob = asyncHandler(async (req, res) => {
   });
 
   // 6. Send response
-  res.status(200).json({
-    success: true,
-    message: "Job updated successfully",
-    data: updatedJob,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, updatedJob, "Job updated successfully")
+  );
 });
 
 //Delete Job
@@ -539,28 +508,19 @@ const deleteJob = asyncHandler(async (req, res) => {
 
   // 1. Validate Job ID
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid Job Id!!",
-    });
+    throw new AppError(400, "Invalid Job Id!!");
   }
 
   // 2. Find Job
   const job = await Job.findById(jobId);
 
   if (!job) {
-    return res.status(404).json({
-      success: false,
-      message: "Job doesn't exist",
-    });
+    throw new AppError(404, "Job doesn't exist");
   }
 
   // 3. Check Authorization
   if (job.createdBy.toString() !== req.user._id.toString()) {
-    return res.status(403).json({
-      success: false,
-      message: "You are not allowed to delete this job.",
-    });
+    throw new AppError(403, "You are not allowed to delete this job.");
   }
 
   // 4. Delete all Application documents for this job
@@ -570,10 +530,15 @@ const deleteJob = asyncHandler(async (req, res) => {
   for (const application of applications) {
     if (application.resumeUrl) {
       try {
-        const publicId = application.resumeUrl.split('/').slice(-2).join('/').split('.')[0];
-        await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+        const publicId = getResumePublicId(application.resumeUrl);
+        if (publicId) {
+          const result = await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+          if (result?.result !== 'ok') {
+            console.warn(`Cloudinary resume delete returned "${result?.result}" for ${publicId}`);
+          }
+        }
       } catch (error) {
-        // Silently continue if Cloudinary deletion fails
+        console.warn(`Failed to delete resume from Cloudinary: ${error.message}`);
       }
     }
   }
@@ -601,10 +566,9 @@ const deleteJob = asyncHandler(async (req, res) => {
   });
 
   // 7. Response
-  res.status(200).json({
-    success: true,
-    message: "Job deleted successfully!",
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Job deleted successfully!")
+  );
 });
 
 //Saving Job Bookmarks
@@ -614,38 +578,24 @@ const bookmarkJob = asyncHandler(async (req, res) => {
 
   // 1. Validate Job ID
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid Job Id!!",
-    });
+    throw new AppError(400, "Invalid Job Id!!");
   }
 
   // 2. Find Job
   const job = await Job.findById(jobId);
 
   if (!job) {
-    return res.status(404).json({
-      success: false,
-      message: "Job doesn't exist",
-    });
+    throw new AppError(404, "Job doesn't exist");
   }
 
   //3. Checking Role
   if (req.user.role !== "candidate") {
-    return res.status(409)
-      .json({
-        success: false,
-        message: "Only candidate can bookmark the Job!!"
-      })
+    throw new AppError(403, "Only candidate can bookmark the Job!!");
   }
 
   //check if user is active
   if (!req.user.isActive) {
-    return res.status(407)
-      .json({
-        success: false,
-        message: "Your account has been deactivated! Please contact support!!"
-      })
+    throw new AppError(403, "Your account has been deactivated! Please contact support!!");
   }
 
   //4.already Bookmarked
@@ -654,11 +604,7 @@ const bookmarkJob = asyncHandler(async (req, res) => {
   );
 
   if (alreadyBookmarked) {
-    return res.status(404)
-      .json({
-        success: false,
-        message: "Job already Bookmarked!!"
-      })
+    throw new AppError(409, "Job already Bookmarked!!");
   }
 
 
@@ -672,30 +618,22 @@ const bookmarkJob = asyncHandler(async (req, res) => {
     metadata: { jobId },
   });
 
-  res.status(200)
-    .json({
-      success: true,
-      message: "Job Bookmarked Successfully!!"
-    })
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Job Bookmarked Successfully!!")
+  );
 })
 
 
 //Getting Bookmarking Jobs
 const getBookmarkedJobs = asyncHandler(async (req, res) => {
   if (req.user.role !== "candidate") {
-    return res.status(403).json({
-      success: false,
-      message: "Only candidates can view bookmarked jobs",
-    });
+    throw new AppError(403, "Only candidates can view bookmarked jobs");
   }
 
   const userWithBookmarks = await User.findById(req.user._id).populate("bookmarks")
 
   if (!userWithBookmarks) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found",
-    });
+    throw new AppError(404, "User not found");
   }
 
   // Filter out null values (deleted jobs) and clean up bookmarks array
@@ -707,12 +645,15 @@ const getBookmarkedJobs = asyncHandler(async (req, res) => {
     await userWithBookmarks.save();
   }
 
-  res.status(200)
-    .json({
-      success: true,
-      data: validBookmarks
-    })
+  return res.status(200).json(
+    new ApiResponse(200, validBookmarks)
+  );
 })
+
+
+
+
+
 
 //Recruiter dashboard API:
 /* Total Jobs they posted.
@@ -749,12 +690,39 @@ const getRecruiterStats = asyncHandler(async (req, res) => {
   });
 
   // 6. Send response
-  res.status(200).json({
-    success: true,
-    totalJobsPosted,
-    totalApplicants,
-    mostAppliedJob: mostAppliedJob || null,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalJobsPosted,
+      totalApplicants,
+      mostAppliedJob: mostAppliedJob || null,
+    })
+  );
+});
+
+// Recruiter analytics: application status funnel across the recruiter's jobs
+const getRecruiterAnalytics = asyncHandler(async (req, res) => {
+  const recruiterId = req.user._id;
+
+  const jobs = await Job.find({ createdBy: recruiterId }).select("_id");
+  const jobIds = jobs.map((j) => j._id);
+
+  // Count applications by current status across those jobs
+  const funnel = { applied: 0, shortlisted: 0, rejected: 0, hired: 0 };
+  if (jobIds.length > 0) {
+    const grouped = await Application.aggregate([
+      { $match: { job: { $in: jobIds } } },
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]);
+    grouped.forEach((g) => {
+      if (g._id in funnel) funnel[g._id] = g.count;
+    });
+  }
+
+  const totalApplications = funnel.applied + funnel.shortlisted + funnel.rejected + funnel.hired;
+
+  return res.status(200).json(
+    new ApiResponse(200, { totalApplications, funnel }, "Recruiter analytics fetched")
+  );
 });
 
 //Candidate Dashboard API
@@ -766,19 +734,20 @@ const getCandidateStats = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 }) // newest first
     .limit(5); // last 5 jobs
 
-  const totalAppliedJobs = await Job.countDocuments({ applicants: userId });
+  const totalAppliedJobs = await Application.countDocuments({ user: userId });
 
   // 2. Bookmarked jobs
   const user = await User.findById(userId).select("bookmarks");
   const totalBookmarkedJobs = user.bookmarks.length;
 
   // 3. Send response
-  res.status(200).json({
-    success: true,
-    totalAppliedJobs,
-    recentAppliedJobs: appliedJobs,
-    totalBookmarkedJobs,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalAppliedJobs,
+      recentAppliedJobs: appliedJobs,
+      totalBookmarkedJobs,
+    })
+  );
 });
 
 
@@ -787,21 +756,20 @@ const unbookmarkJob = asyncHandler(async (req, res) => {
   const { id: jobId } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(400).json({ success: false, message: "Invalid Job Id!" });
+    throw new AppError(400, "Invalid Job Id!");
   }
 
   if (req.user.role !== "candidate") {
-    return res.status(403).json({ success: false, message: "Only candidates can unbookmark jobs!" });
+    throw new AppError(403, "Only candidates can unbookmark jobs!");
   }
 
-  const isBookmarked = req.user.bookmarks.includes(jobId);
+  const isBookmarked = req.user.bookmarks.some(
+    id => id.toString() === jobId
+  );
 
   // ❗ If not bookmarked, return error
   if (!isBookmarked) {
-    return res.status(404).json({
-      success: false,
-      message: "Job is not bookmarked.",
-    });
+    throw new AppError(404, "Job is not bookmarked.");
   }
 
   // ❗ Proceed to remove bookmark
@@ -817,7 +785,9 @@ const unbookmarkJob = asyncHandler(async (req, res) => {
     metadata: { jobId },
   });
 
-  res.status(200).json({ success: true, message: "Job unbookmarked successfully!" });
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Job unbookmarked successfully!")
+  );
 });
 
 
@@ -828,27 +798,18 @@ const withdrawJobApplication = asyncHandler(async (req, res) => {
 
   // 1. Validate Job ID
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid Job Id!!",
-    });
+    throw new AppError(400, "Invalid Job Id!!");
   }
 
   // 2. Find Job
   const job = await Job.findById(jobId);
   if (!job) {
-    return res.status(404).json({
-      success: false,
-      message: "Job not found!",
-    });
+    throw new AppError(404, "Job not found!");
   }
 
   // 3. Role Check
   if (req.user.role !== "candidate") {
-    return res.status(403).json({
-      success: false,
-      message: "Only candidates can withdraw job applications",
-    });
+    throw new AppError(403, "Only candidates can withdraw job applications");
   }
 
   // 4. Find and delete the Application document
@@ -858,10 +819,7 @@ const withdrawJobApplication = asyncHandler(async (req, res) => {
   });
 
   if (!application) {
-    return res.status(404).json({
-      success: false,
-      message: "You have not applied to this job",
-    });
+    throw new AppError(404, "You have not applied to this job");
   }
 
   // 5. Remove user from job's applicants array
@@ -875,10 +833,16 @@ const withdrawJobApplication = asyncHandler(async (req, res) => {
   // 7. Optional: Delete resume from Cloudinary
   if (application.resumeUrl) {
     try {
-      const publicId = application.resumeUrl.split('/').slice(-2).join('/').split('.')[0];
-      await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+      const publicId = getResumePublicId(application.resumeUrl);
+      if (publicId) {
+        const result = await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+        if (result?.result !== 'ok') {
+          console.warn(`Cloudinary resume delete returned "${result?.result}" for ${publicId}`);
+        }
+      }
     } catch (error) {
       // Don't fail the request if Cloudinary deletion fails
+      console.warn(`Failed to delete resume from Cloudinary: ${error.message}`);
     }
   }
 
@@ -889,10 +853,9 @@ const withdrawJobApplication = asyncHandler(async (req, res) => {
   });
 
   // 8. Send Response
-  res.status(200).json({
-    success: true,
-    message: "Application withdrawn successfully!",
-  });
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Application withdrawn successfully!")
+  );
 });
 
 // Update application status (recruiter only)
@@ -903,28 +866,19 @@ const updateApplicationStatus = asyncHandler(async (req, res) => {
   // 1. Validate status
   const validStatuses = ["applied", "shortlisted", "rejected", "hired"];
   if (!status || !validStatuses.includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-    });
+    throw new AppError(400, `Invalid status. Must be one of: ${validStatuses.join(", ")}`);
   }
 
   // 2. Find application
   const application = await Application.findById(applicationId).populate("job");
 
   if (!application) {
-    return res.status(404).json({
-      success: false,
-      message: "Application not found",
-    });
+    throw new AppError(404, "Application not found");
   }
 
   // 3. Verify recruiter owns this job
   if (application.job.createdBy.toString() !== req.user._id.toString()) {
-    return res.status(403).json({
-      success: false,
-      message: "You are not authorized to update this application",
-    });
+    throw new AppError(403, "You are not authorized to update this application");
   }
 
   // 4. Update status
@@ -957,16 +911,69 @@ const updateApplicationStatus = asyncHandler(async (req, res) => {
     metadata: { applicationId, status, jobId: application.job._id },
   });
 
-  res.status(200).json({
-    success: true,
-    message: `Application status updated to ${status}`,
-    data: application,
-  });
+  return res.status(200).json(
+    new ApiResponse(200, application, `Application status updated to ${status}`)
+  );
+});
+
+
+
+
+
+
+// Lightweight search suggestions for the autocomplete dropdown.
+// Returns distinct job titles + company names matching the typed query.
+const getJobSuggestions = asyncHandler(async (req, res) => {
+  const q = (req.query.q || "").trim();
+
+  // Require at least 2 chars to avoid noisy/expensive lookups
+  if (q.length < 2) {
+    return res.status(200).json(new ApiResponse(200, [], "No suggestions"));
+  }
+
+  // Escape regex metacharacters so user input can't break the query
+  const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(safe, "i");
+
+  const [titles, companies] = await Promise.all([
+    Job.distinct("title", { title: regex }),
+    Job.distinct("company", { company: regex }),
+  ]);
+
+  const suggestions = [
+    ...titles.slice(0, 6).map((value) => ({ type: "title", value })),
+    ...companies.slice(0, 4).map((value) => ({ type: "company", value })),
+  ].slice(0, 8);
+
+  return res.status(200).json(new ApiResponse(200, suggestions, "Suggestions fetched"));
+});
+
+
+// Public platform-wide stats (homepage + about page counters)
+const getPlatformStats = asyncHandler(async (req, res) => {
+  const [totalJobs, totalCandidates, totalRecruiters, totalHired, companies] = await Promise.all([
+    Job.countDocuments(),
+    User.countDocuments({ role: "candidate" }),
+    User.countDocuments({ role: "recruiter" }),
+    Application.countDocuments({ status: "hired" }),
+    Job.distinct("company"),
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalJobs,
+      totalCandidates,
+      totalRecruiters,
+      totalCompanies: companies.length,
+      totalHired,
+    })
+  );
 });
 
 
 export {
   createJob, getAllJobs, getJobById, applyforJob,
   getAppliedJobs, getJobApplicants, editJob, deleteJob, bookmarkJob, getBookmarkedJobs,
-  getRecruiterStats, getCandidateStats, unbookmarkJob, withdrawJobApplication, updateApplicationStatus
+  getRecruiterStats, getCandidateStats, unbookmarkJob, withdrawJobApplication, updateApplicationStatus,
+  getPlatformStats, getJobSuggestions, getRecruiterAnalytics
 }

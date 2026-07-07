@@ -2,7 +2,8 @@ import express from "express";
 import {
     createJob, getAllJobs, getJobById, applyforJob, getAppliedJobs,
     getJobApplicants, editJob, deleteJob, bookmarkJob, getBookmarkedJobs,
-    getCandidateStats, getRecruiterStats, unbookmarkJob, withdrawJobApplication, updateApplicationStatus
+    getCandidateStats, getRecruiterStats, unbookmarkJob, withdrawJobApplication, updateApplicationStatus,
+    getPlatformStats, getJobSuggestions, getRecruiterAnalytics
 } from "../controllers/job.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../middlewares/authorizeRoles.middleware.js";
@@ -18,6 +19,9 @@ jobRouter.get("/jobs/applied", verifyJWT, authorizeRoles("candidate"), getApplie
 jobRouter.get("/jobs/bookmarked", verifyJWT, authorizeRoles("candidate"), getBookmarkedJobs);
 jobRouter.get("/jobs/candidate/stats", verifyJWT, authorizeRoles("candidate"), getCandidateStats);
 jobRouter.get("/jobs/recruiter/stats", verifyJWT, authorizeRoles("recruiter"), getRecruiterStats);
+jobRouter.get("/jobs/recruiter/analytics", verifyJWT, authorizeRoles("recruiter"), getRecruiterAnalytics);
+jobRouter.get("/jobs/stats", getPlatformStats);
+jobRouter.get("/jobs/suggestions", getJobSuggestions);
 jobRouter.get("/jobs", getAllJobs);
 jobRouter.get("/jobs/:id", getJobById);
 jobRouter.get("/jobs/:id/applicants", verifyJWT, authorizeRoles("recruiter"), getJobApplicants);

@@ -1,6 +1,8 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { Notification } from "../models/notification.model.js";
 import mongoose from "mongoose";
+import { AppError } from "../utils/AppError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 
 // Get all notifications for logged-in user
 const getNotifications = asyncHandler(async (req, res) => {
@@ -24,14 +26,13 @@ const getNotifications = asyncHandler(async (req, res) => {
     const totalNotifications = await Notification.countDocuments(filter);
     const unreadCount = await Notification.countDocuments({ recipient: userId, isRead: false });
 
-    res.status(200).json({
-        success: true,
-        data: notifications,
+    res.status(200).json(new ApiResponse(200, {
+        notifications,
         unreadCount,
         totalNotifications,
         totalPages: Math.ceil(totalNotifications / limit),
         currentPage: Number(page),
-    });
+    }));
 });
 
 // Mark notification as read
@@ -40,29 +41,19 @@ const markAsRead = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid notification ID",
-        });
+        throw new AppError(400, "Invalid notification ID");
     }
 
     const notification = await Notification.findOne({ _id: id, recipient: userId });
 
     if (!notification) {
-        return res.status(404).json({
-            success: false,
-            message: "Notification not found",
-        });
+        throw new AppError(404, "Notification not found");
     }
 
     notification.isRead = true;
     await notification.save();
 
-    res.status(200).json({
-        success: true,
-        message: "Notification marked as read",
-        data: notification,
-    });
+    res.status(200).json(new ApiResponse(200, notification, "Notification marked as read"));
 });
 
 // Mark all notifications as read
@@ -74,10 +65,7 @@ const markAllAsRead = asyncHandler(async (req, res) => {
         { isRead: true }
     );
 
-    res.status(200).json({
-        success: true,
-        message: "All notifications marked as read",
-    });
+    res.status(200).json(new ApiResponse(200, null, "All notifications marked as read"));
 });
 
 // Delete notification
@@ -86,25 +74,16 @@ const deleteNotification = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid notification ID",
-        });
+        throw new AppError(400, "Invalid notification ID");
     }
 
     const notification = await Notification.findOneAndDelete({ _id: id, recipient: userId });
 
     if (!notification) {
-        return res.status(404).json({
-            success: false,
-            message: "Notification not found",
-        });
+        throw new AppError(404, "Notification not found");
     }
 
-    res.status(200).json({
-        success: true,
-        message: "Notification deleted",
-    });
+    res.status(200).json(new ApiResponse(200, null, "Notification deleted"));
 });
 
 // Helper function to create notification (used by other controllers)
@@ -132,7 +111,7 @@ export const createNotification = async ({
         return notification;
     } catch (error) {
         console.error("Error creating notification:", error);
-        return null;
+        throw new AppError(500, "Failed to create notification");
     }
 };
 

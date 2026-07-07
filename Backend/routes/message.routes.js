@@ -11,19 +11,18 @@ import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const messageRouter = express.Router();
 
-// All routes require authentication
-messageRouter.use(verifyJWT);
+
 
 // GET routes
-messageRouter.get("/conversations", getConversations);
-messageRouter.get("/conversations/:conversationId/messages", getMessages);
-messageRouter.get("/messages/unread-count", getUnreadCount);
+messageRouter.get("/conversations", verifyJWT, getConversations);
+messageRouter.get("/conversations/:conversationId/messages", verifyJWT, getMessages);
+messageRouter.get("/messages/unread-count", verifyJWT, getUnreadCount);
 
 // POST routes
-messageRouter.post("/conversations", getOrCreateConversation);
-messageRouter.post("/conversations/:conversationId/messages", sendMessage);
+messageRouter.post("/conversations", verifyJWT, getOrCreateConversation);
+messageRouter.post("/conversations/:conversationId/messages", verifyJWT, sendMessage);
 
 // DELETE routes
-messageRouter.delete("/conversations/:conversationId", deleteConversation);
+messageRouter.delete("/conversations/:conversationId", verifyJWT, deleteConversation);
 
 export default messageRouter;

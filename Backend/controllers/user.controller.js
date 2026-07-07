@@ -1,142 +1,47 @@
+import { AppError } from "../utils/AppError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
 import { Job } from "../models/job.model.js";
 import { Application } from "../models/application.model.js";
 import jwt from "jsonwebtoken";
 import cloudinary from "../utils/cloudinary.js";
-import { bufferToStream } from "../utils/bufferToStream.js";
 
-
-//Registration logic
-// NOTE: This endpoint is for LEGACY users only (existing users before OAuth implementation)
-// New candidates must use Google/Apple OAuth
-// New recruiters must use /auth/recruiter/register endpoint with OTP verification
-const registerUser = asyncHandler(async (req, res) => {
-  const { fullname, email, password, role } = req.body;
-
-  // 1. Check empty fields
-  if ([fullname, email, password, role].some((field) => !field?.trim())) {
-    return res
-      .status(400)
-      .json({ success: false, message: "All fields are mandatory" });
-  }
-
-  // 2. Validate email format
-  const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  if (!emailRegex.test(email)) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Please provide a valid email address" });
-  }
-
-  // 3. Role check: Only allow candidate or recruiter from request
-  if (!["candidate", "recruiter"].includes(role)) {
-    return res
-      .status(400)
-      .json({ success: false, message: `Role must be "candidate" or "recruiter"` });
-  }
-
-  // 4. Check if user already exists
-  const existedUser = await User.findOne({ email });
-  if (existedUser) {
-    return res
-      .status(409)
-      .json({ success: false, message: "User with this email already exists" });
-  }
-
-  // 4. Create user (legacy local auth)
-  // New users created here will have authProvider: 'local' (default)
-  // accountStatus will be 'approved' for candidates, 'pending' for recruiters (default)
-  const user = await User.create({
-    fullname,
-    password,
-    email,
-    role,
-    authProvider: 'local',
-    emailVerified: true // Auto-verify for legacy users
-  });
-
-  // 5. Generate tokens
-  const accessToken = user.generateAccessToken();
-  const refreshToken = user.generateRefreshToken();
-
-  // 6. Save refresh token in DB
-  user.refreshToken = refreshToken;
-  await user.save({ validateBeforeSave: false });
-
-  // 7. Set cookies
-  res
-    .cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "Strict",
-      maxAge: 24 * 60 * 60 * 1000,
-    })
-    .cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "Strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-  // 8. Clean up sensitive info
-  const createdUser = await User.findById(user._id).select("-password -refreshToken");
-  if (!createdUser) {
-    return res.status(500).json({
-      success: false,
-      message: "Something went wrong while registering the user",
-    });
-  }
-
-  // 9. Final response
-  return res.status(201).json({
-    success: true,
-    data: createdUser,
-    message: "User registration successful!",
-  });
-});
 
 //Login logic
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body
 
   if (!email || !password || email.trim() === "" || password.trim() === "") {
-    return res.status(409).json({ success: false, message: "Email and password are required" })
+    throw new AppError(400, "Email and password are required")
   }
 
   // Validate email format
   const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   if (!emailRegex.test(email)) {
-    return res.status(400).json({ success: false, message: "Please provide a valid email address" });
+    throw new AppError(400, "Please provide a valid email address")
   }
 
   const user = await User.findOne({ email })
 
   if (!user) {
-    return res.status(400).json({ success: false, message: "User does not exist with this email" })
+    throw new AppError(404, "User does not exist with this email")
   }
 
   // Check if user is OAuth user (no password)
   if (user.authProvider !== 'local') {
-    return res.status(400).json({
-      success: false,
-      message: `This account uses ${user.authProvider} login. Please use the "Sign in with ${user.authProvider === 'google' ? 'Google' : 'Apple'}" button.`
-    })
+    throw new AppError(400, `This account uses Google login. Please use the "Sign in with Google" button.`)
   }
 
   const isPasswordValid = await user.isPasswordCorrect(password)
 
   if (!isPasswordValid) {
-    return res.status(401).json({ success: false, message: "Password is incorrect!!" })
+    throw new AppError(401, "Password is incorrect!!")
   }
 
   //check if user is active
   if (!user.isActive) {
-    return res.status(407)
-      .json({
-        success: false,
-        message: "Your account has been deactivated! Please contact support!!"
-      })
+    throw new AppError(403, "Your account has been deactivated! Please contact support!!")
   }
 
   // Check recruiter account status
@@ -147,11 +52,7 @@ const loginUser = asyncHandler(async (req, res) => {
       'blocked': 'Your account has been blocked. Please contact support.'
     };
 
-    return res.status(403).json({
-      success: false,
-      message: statusMessages[user.accountStatus] || 'Access denied',
-      accountStatus: user.accountStatus
-    })
+    throw new AppError(403, statusMessages[user.accountStatus] || 'Access denied', { accountStatus: user.accountStatus })
   }
 
   const accessToken = user.generateAccessToken()
@@ -163,33 +64,25 @@ const loginUser = asyncHandler(async (req, res) => {
   res
     .cookie("accessToken", accessToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "Strict",
-      maxAge: 24 * 60 * 60 * 1000
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 15 * 60 * 1000
     })
 
     .cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "Strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000
     })
 
 
   const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
-
-
-  res
-    .status(201)
-    .json({
-      success: true,
-      data: loggedInUser,
-      message: "Successfully logged in!!"
-    })
-
-
-})
+  return res.status(200).json(
+    new ApiResponse(200, loggedInUser, "Successfully logged in!!")
+  )
+});
 
 //me logic
 const getCurrentUser = asyncHandler(async (req, res) => {
@@ -198,47 +91,36 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     .select("-password -refreshToken");
 
   if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found"
-    });
+    throw new AppError(404, "User not found");
   }
 
   // Calculate applied jobs count from Application collection
   const appliedJobsCount = await Application.countDocuments({ user: user._id });
 
-  // Clean up bookmarks - check which jobs still exist
+
   if (user.bookmarks && user.bookmarks.length > 0) {
-    const originalCount = user.bookmarks.length;
-    const validBookmarks = [];
 
-    for (const bookmarkId of user.bookmarks) {
-      const jobExists = await Job.findById(bookmarkId);
-      if (jobExists) {
-        validBookmarks.push(bookmarkId);
-      }
-    }
+    // 1 query total — find all valid bookmarks at once
+    const existingJobs = await Job.find(
+      { _id: { $in: user.bookmarks } },
+      { _id: 1 }  // only fetch IDs, nothing else
+    );
 
-    // Update if any were removed
-    if (validBookmarks.length !== originalCount) {
-      await User.findByIdAndUpdate(
-        user._id,
-        { bookmarks: validBookmarks }
-      );
+    const validIds = new Set(existingJobs.map(j => j._id.toString()));
+
+    const validBookmarks = user.bookmarks.filter(id =>
+      validIds.has(id.toString())
+    );
+
+    if (validBookmarks.length !== user.bookmarks.length) {
+      await User.findByIdAndUpdate(user._id, { bookmarks: validBookmarks });
       user.bookmarks = validBookmarks;
     }
   }
 
-  return res
-    .status(200)
-    .json({
-      success: true,
-      data: {
-        ...user.toObject(),
-        appliedJobsCount
-      },
-      message: "User fetched successfully!!"
-    })
+  return res.status(200).json(
+    new ApiResponse(200, { ...user.toObject(), appliedJobsCount }, "User fetched successfully!!")
+  )
 })
 
 //Generating new AccessToken from refreshToken
@@ -246,48 +128,47 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   const token = req.cookies?.refreshToken
 
   if (!token) {
-    return res.status(401).json({ success: false, message: "Unauthorized request!!" })
+    throw new AppError(401, "Unauthorized request!!")
   }
 
   try {
     const decodedToken = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET)
 
-    if (!decodedToken) {
-      return res.status(403).json({ success: false, message: "Forbidden" })
-    }
-
     const user = await User.findById(decodedToken._id)
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found!!" })
+      throw new AppError(404, "User not found!!")
     }
 
     if (user.refreshToken !== token) {
-      return res.status(403).json({ success: false, message: "Invalid refresh token!!" })
+      throw new AppError(403, "Invalid refresh token!!")
     }
 
     const newAccessToken = user.generateAccessToken()
+    const newRefreshToken = user.generateRefreshToken()
+
+    user.refreshToken = newRefreshToken;
+    await user.save({ validateBeforeSave: false });
 
     res.cookie("accessToken", newAccessToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "Strict",
-      maxAge: 24 * 60 * 60 * 1000
-    })
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 15 * 60 * 1000
+    });
 
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "AccessToken refreshed Successfully!!"
-      })
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+
+    return res.status(200).json(
+      new ApiResponse(200, {}, "AccessToken refreshed Successfully!!")
+    )
   } catch (error) {
-    res
-      .status(405)
-      .json({
-        success: false,
-        message: "Invalid or Expired RefreshToken!!"
-      })
+    throw new AppError(401, "Invalid or Expired RefreshToken!!")
   }
 })
 
@@ -298,7 +179,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     req.user._id,
     {
       $set: {
-        refreshToken: undefined
+        refreshToken: ""
       }
     },
     {
@@ -307,21 +188,18 @@ const logoutUser = asyncHandler(async (req, res) => {
   )
 
   return res
+    .status(200)
     .clearCookie("accessToken", {
       httpOnly: true,
-      secure: true,
-      sameSite: "Strict"
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
     .clearCookie("refreshToken", {
       httpOnly: true,
-      secure: true,
-      sameSite: "Strict"
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
-    .status(200)
-    .json({
-      success: true,
-      message: "User logout successfully!!"
-    })
+    .json(new ApiResponse(200, {}, "User logout successfully!!"))
 })
 
 //Update user profile
@@ -332,7 +210,7 @@ const updateProfile = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id);
 
   if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+    throw new AppError(404, "User not found");
   }
 
   // Update text fields if provided
@@ -358,10 +236,7 @@ const updateProfile = asyncHandler(async (req, res) => {
       user.profilePic = uploadedImage.secure_url;
     } catch (error) {
       console.error("Cloudinary upload error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to upload profile picture. Please try again."
-      });
+      throw new AppError(500, "Failed to upload profile picture. Please try again.");
     }
   }
 
@@ -369,59 +244,60 @@ const updateProfile = asyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false });
 
   // Return updated user without sensitive fields
-  const updatedUser = await User.findById(user._id).select("-password -refreshToken"); return res.status(200).json({
-    success: true,
-    data: updatedUser,
-    message: "Profile updated successfully!"
-  });
+  const updatedUser = await User.findById(user._id).select("-password -refreshToken");
+  return res.status(200).json(
+    new ApiResponse(200, updatedUser, "Profile updated successfully!")
+  );
 });
 
 
 // Cleanup orphaned bookmarks (jobs that were deleted)
 const cleanupOrphanedBookmarks = asyncHandler(async (req, res) => {
-  try {
-    // Get all users with bookmarks
-    const users = await User.find({ bookmarks: { $exists: true, $ne: [] } });
+  // Step 1 — get all users with bookmarks (1 query)
+  const users = await User.find(
+    { bookmarks: { $exists: true, $ne: [] } },
+    { _id: 1, bookmarks: 1 }  // only fetch what we need
+  );
 
-    let totalCleaned = 0;
-    let usersAffected = 0;
-
-    for (const user of users) {
-      const originalCount = user.bookmarks.length;
-
-      // Check which bookmarks still exist
-      const validBookmarks = [];
-      for (const bookmarkId of user.bookmarks) {
-        const jobExists = await Job.findById(bookmarkId);
-        if (jobExists) {
-          validBookmarks.push(bookmarkId);
-        }
-      }
-
-      // Update if any bookmarks were removed
-      if (validBookmarks.length !== originalCount) {
-        await User.findByIdAndUpdate(user._id, { bookmarks: validBookmarks });
-        totalCleaned += (originalCount - validBookmarks.length);
-        usersAffected++;
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Cleanup completed",
-      data: {
-        usersAffected,
-        totalBookmarksRemoved: totalCleaned
-      }
-    });
-  } catch (error) {
-    console.error("Cleanup error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Cleanup failed",
-      error: error.message
-    });
+  if (users.length === 0) {
+    return res.status(200).json(
+      new ApiResponse(200, { usersAffected: 0, totalBookmarksRemoved: 0 }, "Nothing to clean")
+    );
   }
-});
 
-export { registerUser, loginUser, getCurrentUser, refreshAccessToken, logoutUser, updateProfile, cleanupOrphanedBookmarks }
+  // Step 2 — collect ALL bookmark IDs across ALL users (no query)
+  const allBookmarkIds = [
+    ...new Set(
+      users.flatMap(u => u.bookmarks.map(id => id.toString()))
+    )
+  ];
+
+  // Step 3 — find which ones still exist (1 query total)
+  const existingJobs = await Job.find(
+    { _id: { $in: allBookmarkIds } },
+    { _id: 1 }
+  );
+
+  const validIds = new Set(existingJobs.map(j => j._id.toString()));
+
+  // Step 4 — update only affected users
+  let totalCleaned = 0;
+  let usersAffected = 0;
+
+  for (const user of users) {
+    const validBookmarks = user.bookmarks.filter(id =>
+      validIds.has(id.toString())
+    );
+
+    if (validBookmarks.length !== user.bookmarks.length) {
+      await User.findByIdAndUpdate(user._id, { bookmarks: validBookmarks });
+      totalCleaned += (user.bookmarks.length - validBookmarks.length);
+      usersAffected++;
+    }
+  }
+
+  return res.status(200).json(
+    new ApiResponse(200, { usersAffected, totalBookmarksRemoved: totalCleaned }, "Cleanup completed")
+  );
+});
+export { loginUser, getCurrentUser, refreshAccessToken, logoutUser, updateProfile, cleanupOrphanedBookmarks }

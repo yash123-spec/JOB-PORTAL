@@ -56,5 +56,9 @@ const jobSchema = new Schema({
     }]
 }, { timestamps: true })
 
+jobSchema.index({ createdBy: 1 });
+jobSchema.index({ createdAt: -1 });
+jobSchema.index({ type: 1, jobTime: 1 });
+jobSchema.index({ salaryMin: 1, salaryMax: 1 });
 
 export const Job = mongoose.model("Job", jobSchema)

@@ -9,17 +9,15 @@ import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const notificationRouter = express.Router();
 
-// All routes require authentication
-notificationRouter.use(verifyJWT);
+
 
 // GET routes
-notificationRouter.get("/notifications", getNotifications);
+notificationRouter.get("/notifications", verifyJWT, getNotifications);
 
 // PUT routes
-notificationRouter.put("/notifications/:id/read", markAsRead);
-notificationRouter.put("/notifications/read-all", markAllAsRead);
-
+notificationRouter.put("/notifications/:id/read", verifyJWT, markAsRead);
+notificationRouter.put("/notifications/read-all", verifyJWT, markAllAsRead);
 // DELETE routes
-notificationRouter.delete("/notifications/:id", deleteNotification);
+notificationRouter.delete("/notifications/:id", verifyJWT, deleteNotification);
 
 export default notificationRouter;
