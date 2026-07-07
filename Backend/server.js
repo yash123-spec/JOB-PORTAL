@@ -30,6 +30,7 @@ app.use(cors({
     credentials: true
 }))
 
+
 // Gzip all responses — shrinks JSON payloads (like the jobs list) by ~60-80%
 app.use(compression())
 
@@ -70,6 +71,19 @@ app.use(errorHandler);
 
 // Connect to DB immediately for Vercel serverless
 connectDB().catch(err => console.error('MongoDB connection error:', err));
+
+//server logging middleware
+app.use((req, res, next) => {
+    const start = performance.now();
+
+    res.on("finish", () => {
+        console.log(
+            `${req.method} ${req.originalUrl} - ${(performance.now() - start).toFixed(2)} ms`
+        );
+    });
+
+    next();
+});
 
 // Start server only in non-serverless environment
 const PORT = process.env.PORT || 8000;
