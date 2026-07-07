@@ -56,6 +56,19 @@ app.get("/", (req, res) => {
     })
 })
 
+//server logging middleware
+app.use((req, res, next) => {
+    const start = performance.now();
+
+    res.on("finish", () => {
+        console.log(
+            `${req.method} ${req.originalUrl} - ${(performance.now() - start).toFixed(2)} ms`
+        );
+    });
+
+    next();
+});
+
 // Routes
 // Routes
 app.use("/api/v1/user", router)
@@ -72,18 +85,7 @@ app.use(errorHandler);
 // Connect to DB immediately for Vercel serverless
 connectDB().catch(err => console.error('MongoDB connection error:', err));
 
-//server logging middleware
-app.use((req, res, next) => {
-    const start = performance.now();
 
-    res.on("finish", () => {
-        console.log(
-            `${req.method} ${req.originalUrl} - ${(performance.now() - start).toFixed(2)} ms`
-        );
-    });
-
-    next();
-});
 
 // Start server only in non-serverless environment
 const PORT = process.env.PORT || 8000;
