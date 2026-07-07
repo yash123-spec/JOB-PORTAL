@@ -114,8 +114,8 @@ const Register = () => {
 
     };
 
-    const inputCls = "w-full px-3 py-2 bg-white/8 border border-white/15 rounded-lg text-white text-sm placeholder-white/40 focus:outline-none focus:border-teal-400/60 focus:bg-white/12 transition-all";
-    const labelCls = "text-xs text-white/70 block mb-1 font-medium";
+    const inputCls = "w-full px-3 py-2.5 bg-white/10 border border-white/25 rounded-lg text-white text-sm placeholder-white/50 focus:outline-none focus:border-teal-400 focus:bg-white/15 transition-all";
+    const labelCls = "text-xs text-white/90 block mb-1 font-semibold";
 
     return (
         <div className="min-h-screen flex items-center justify-center relative overflow-auto py-6">
@@ -127,7 +127,7 @@ const Register = () => {
 
             {/* Glass Card */}
             <div className="relative z-10 w-full max-w-[460px] mx-auto px-3 sm:px-4 py-4 sm:py-6">
-                <div className=" bg-white/15 backdrop-blur-2xl border border-white/5 rounded-2xl px-4 py-5 sm:px-7 sm:py-6 shadow-[0_8px_40px_rgba(0,0,0,0.5)]">
+                <div className="bg-black/50 backdrop-blur-2xl border border-white/15 rounded-2xl px-4 py-5 sm:px-7 sm:py-6 shadow-[0_8px_60px_rgba(0,0,0,0.7)]">
 
                     <BrandLogo />
 
@@ -153,9 +153,9 @@ const Register = () => {
                         <div className="space-y-3">
                             <GoogleLoginButton />
                             <div className="flex items-center gap-3">
-                                <div className="flex-1 h-px bg-white/10"></div>
-                                <span className="text-xs text-slate-600">or</span>
-                                <div className="flex-1 h-px bg-white/10"></div>
+                                <div className="flex-1 h-px bg-white/20"></div>
+                                <span className="text-xs text-slate-400 font-medium">or</span>
+                                <div className="flex-1 h-px bg-white/20"></div>
                             </div>
                             <div className="bg-teal-950/50 border border-teal-700/30 rounded-xl px-4 py-3">
                                 <p className="text-[12px] text-teal-300 text-center leading-relaxed">
@@ -182,14 +182,14 @@ const Register = () => {
                                     <label className={labelCls}>Password *</label>
                                     <div className="relative">
                                         <input name="password" value={form.password} onChange={handleChange} type={showPassword ? "text" : "password"} className={`${inputCls} pr-10`} placeholder="Password" required />
-                                        <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">{showPassword ? <EyeOffIcon /> : <EyeIcon />}</button>
+                                        <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors">{showPassword ? <EyeOffIcon /> : <EyeIcon />}</button>
                                     </div>
                                 </div>
                                 <div>
                                     <label className={labelCls}>Confirm password *</label>
                                     <div className="relative">
                                         <input name="confirmPassword" value={form.confirmPassword} onChange={handleChange} type={showConfirmPassword ? "text" : "password"} className={`${inputCls} pr-10`} placeholder="Repeat password" required />
-                                        <button type="button" onClick={() => setShowConfirmPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">{showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}</button>
+                                        <button type="button" onClick={() => setShowConfirmPassword(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors">{showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}</button>
                                     </div>
                                 </div>
                             </div>

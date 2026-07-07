@@ -66,7 +66,7 @@ const Login = () => {
         }
     };
 
-    const inputIconCls = "w-full pl-11 pr-4 py-3 bg-white/8 border border-white/15 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:border-teal-400/60 focus:bg-white/12 transition-all";
+    const inputIconCls = "w-full pl-11 pr-4 py-3 bg-white/10 border border-white/25 rounded-xl text-white text-sm placeholder-white/50 focus:outline-none focus:border-teal-400 focus:bg-white/15 transition-all";
 
     return (
         <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
@@ -77,7 +77,7 @@ const Login = () => {
             <div className="absolute inset-0 bg-black/80"></div>
 
             {/* Glass Card */}
-            <div className="relative z-10 w-full max-w-[400px] mx-4 bg-white/15 backdrop-blur-2xl border border-white/5 rounded-2xl px-5 py-7 sm:px-8 sm:py-8 shadow-[0_8px_40px_rgba(0,0,0,0.5)]">
+            <div className="relative z-10 w-full max-w-[400px] mx-4 bg-black/50 backdrop-blur-2xl border border-white/15 rounded-2xl px-5 py-7 sm:px-8 sm:py-8 shadow-[0_8px_60px_rgba(0,0,0,0.7)]">
 
                 <BrandLogo />
 
@@ -89,9 +89,9 @@ const Login = () => {
                         <GoogleLoginButton />
 
                         <div className="flex items-center gap-3 my-5">
-                            <div className="flex-1 h-px bg-white/10"></div>
-                            <span className="text-xs text-slate-600">or</span>
-                            <div className="flex-1 h-px bg-white/10"></div>
+                            <div className="flex-1 h-px bg-white/20"></div>
+                            <span className="text-xs text-slate-400 font-medium">or</span>
+                            <div className="flex-1 h-px bg-white/20"></div>
                         </div>
 
                         <button
@@ -115,13 +115,13 @@ const Login = () => {
 
                         <form onSubmit={handleRecruiterLogin} className="space-y-3">
                             <div className="relative">
-                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"><UserIcon /></span>
+                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"><UserIcon /></span>
                                 <input type="email" value={credentials.email} onChange={(e) => setCredentials({ ...credentials, email: e.target.value })} className={inputIconCls} placeholder="Email address" required />
                             </div>
                             <div className="relative">
-                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"><LockIcon /></span>
+                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"><LockIcon /></span>
                                 <input type={showPassword ? "text" : "password"} value={credentials.password} onChange={(e) => setCredentials({ ...credentials, password: e.target.value })} className={`${inputIconCls} pr-12`} placeholder="Password" required />
-                                <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                                <button type="button" onClick={() => setShowPassword(s => !s)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors">
                                     {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                                 </button>
                             </div>
@@ -130,7 +130,7 @@ const Login = () => {
                             </button>
                         </form>
 
-                        <button onClick={() => setShowRecruiterLogin(false)} className="mt-5 flex items-center justify-center gap-1.5 text-[13px] text-slate-500 hover:text-slate-300 transition-colors w-full">
+                        <button onClick={() => setShowRecruiterLogin(false)} className="mt-5 flex items-center justify-center gap-1.5 text-[13px] text-slate-400 hover:text-white transition-colors w-full">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                             Back to Candidate Login
                         </button>
