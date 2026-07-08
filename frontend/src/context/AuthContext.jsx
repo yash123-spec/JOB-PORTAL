@@ -13,14 +13,19 @@ export const AuthProvider = ({ children }) => {
     // On mount, check if user is logged in by fetching current user
     useEffect(() => {
         const initAuth = async () => {
+            // No token = not logged in, skip API call entirely
+            const token = localStorage.getItem('accessToken');
+            if (!token) {
+                setInitialized(true);
+                return;
+            }
+
             try {
-                // Check localStorage first (for quick UI updates)
                 const storedUser = localStorage.getItem("user");
                 if (storedUser) {
                     setUser(JSON.parse(storedUser));
                 }
 
-                // Verify with backend
                 const response = await authAPI.getCurrentUser();
                 if (response.success) {
                     setUser(response.data);
