@@ -1,15 +1,14 @@
 // src/Components/NotificationDropdown.jsx
-// Navbar notifications bell: hover the icon to preview the 10 most recent
-// notifications (title + message + time + unread), newest-first — mirrors
-// the Messages hover panel. Clicking the bell opens the full page.
 import React, { useEffect, useState, useRef } from "react";
 import { Bell, Check, Trash2, FileText, RefreshCw, Briefcase, Megaphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import moment from "moment";
 import toast from "react-hot-toast";
 import { notificationAPI } from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 
 const NotificationDropdown = () => {
+    const { user } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -33,12 +32,18 @@ const NotificationDropdown = () => {
         }
     };
 
+
     useEffect(() => {
+        if (!user) {
+            // User logged out — reset stale state immediately
+            setNotifications([]);
+            setUnreadCount(0);
+            return;
+        }
         fetchNotifications();
-        // Poll for new notifications every 30 seconds
         const interval = setInterval(fetchNotifications, 30000);
         return () => clearInterval(interval);
-    }, []);
+    }, [user]);
 
     // Hover open/close with a small delay so moving into the panel doesn't close it
     const handleEnter = () => {

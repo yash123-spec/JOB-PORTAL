@@ -1,20 +1,28 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const AuthCallback = () => {
     const [params] = useSearchParams();
-    const { setTokenAndUser } = useAuth();
+    const { setTokenAndUser, user } = useAuth();
     const navigate = useNavigate();
+    const hasProcessed = useRef(false);
 
+    // Step 2: once user state is actually set in context, navigate
+    useEffect(() => {
+        if (user && hasProcessed.current) {
+            navigate("/jobs", { replace: true });
+        }
+    }, [user]);
+
+    // Step 1: pull token from URL and store it (triggers setUser internally)
     useEffect(() => {
         const token = params.get("token");
         const refresh = params.get("refresh");
 
         if (token) {
-            setTokenAndUser(token, refresh).then(() => {
-                navigate("/jobs", { replace: true });
-            });
+            hasProcessed.current = true;
+            setTokenAndUser(token, refresh);
         } else {
             navigate("/login", { replace: true });
         }

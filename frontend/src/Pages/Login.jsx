@@ -1,5 +1,5 @@
 // src/Pages/Login.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import GoogleLoginButton from "../Components/auth/GoogleLoginButton";
@@ -45,27 +45,27 @@ const BrandLogo = () => (
 
 const Login = () => {
     const navigate = useNavigate();
-    const { login, loading } = useAuth();
+    const { login, loading, user } = useAuth();
     const [showRecruiterLogin, setShowRecruiterLogin] = useState(false);
     const [credentials, setCredentials] = useState({ email: "", password: "" });
     const [keepSignedIn, setKeepSignedIn] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
+    useEffect(() => {
+        if (user) {
+            navigate("/", { replace: true });
+        }
+    }, [user]);
+
+
     const handleRecruiterLogin = async (e) => {
         e.preventDefault();
-
         if (!credentials.email || !credentials.password) {
             toast.error("Please enter email and password");
             return;
         }
-
-        const result = await login(credentials);
-
-        if (result?.success) {
-            navigate("/");
-        }
+        await login(credentials);
     };
-
     const inputIconCls = "w-full pl-11 pr-4 py-3 bg-white/10 border border-white/25 rounded-xl text-white text-sm placeholder-white/50 focus:outline-none focus:border-teal-400 focus:bg-white/15 transition-all";
 
     return (

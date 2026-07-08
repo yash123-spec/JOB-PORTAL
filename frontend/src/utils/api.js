@@ -33,8 +33,14 @@ api.interceptors.response.use(
         if (error.response?.status === 401 && !originalRequest._retry && !shouldSkipRefresh) {
             originalRequest._retry = true;
 
+            const refreshToken = localStorage.getItem('refreshToken');
+
+            // No refresh token = user is logged out, bail silently — never hard-redirect
+            if (!refreshToken) {
+                return Promise.reject(error);
+            }
+
             try {
-                const refreshToken = localStorage.getItem('refreshToken');
                 const { data } = await api.post('/user/refreshAccessToken', { refreshToken });
                 const newToken = data?.data?.accessToken;
                 if (newToken) {
