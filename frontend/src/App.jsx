@@ -21,6 +21,7 @@ const Notifications = lazy(() => import("./Pages/Notifications"));
 const Messages = lazy(() => import("./Pages/Messages"));
 const Error = lazy(() => import("./Pages/Error"));
 const RecruiterDashboard = lazy(() => import("./Pages/RecruiterDashboard"));
+const AuthCallback = lazy(() => import("./Pages/AuthCallback"));
 
 // Lightweight fallback shown while a page's chunk is being fetched
 const PageLoader = () => (
@@ -40,34 +41,35 @@ const App = () => {
       {showNavbar && <Navbar />}
 
       <Suspense fallback={<PageLoader />}>
-      <Routes>
-        {/* Home + Static Pages - Protected */}
-        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-        <Route path="/about" element={<ProtectedRoute><AboutUs /></ProtectedRoute>} />
-        <Route path="/contact" element={<ProtectedRoute><ContactUs /></ProtectedRoute>} />
+        <Routes>
+          {/* Home + Static Pages - Protected */}
+          <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/about" element={<ProtectedRoute><AboutUs /></ProtectedRoute>} />
+          <Route path="/contact" element={<ProtectedRoute><ContactUs /></ProtectedRoute>} />
 
-        {/* Jobs Section - Protected */}
-        <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
-        <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
+          {/* Jobs Section - Protected */}
+          <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
+          <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
 
-        {/* Auth & Profile */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          {/* Auth & Profile */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
-        {/* Candidate Utility Pages - Protected */}
-        <Route path="/my-applications" element={<ProtectedRoute><MyApplications /></ProtectedRoute>} />
-        <Route path="/bookmarked" element={<ProtectedRoute><Bookmarked /></ProtectedRoute>} />
-        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-        <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-        <Route path="/messages/:conversationId" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+          {/* Candidate Utility Pages - Protected */}
+          <Route path="/my-applications" element={<ProtectedRoute><MyApplications /></ProtectedRoute>} />
+          <Route path="/bookmarked" element={<ProtectedRoute><Bookmarked /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+          <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+          <Route path="/messages/:conversationId" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
 
-        {/* Recruiter - Protected */}
-        <Route path="/recruiter-dashboard" element={<ProtectedRoute><RecruiterDashboard /></ProtectedRoute>} />
+          {/* Recruiter - Protected */}
+          <Route path="/recruiter-dashboard" element={<ProtectedRoute><RecruiterDashboard /></ProtectedRoute>} />
 
-        {/* 404 fallback */}
-        <Route path="*" element={<Error />} />
-      </Routes>
+          {/* 404 fallback */}
+          <Route path="*" element={<Error />} />
+        </Routes>
       </Suspense>
     </>
   );

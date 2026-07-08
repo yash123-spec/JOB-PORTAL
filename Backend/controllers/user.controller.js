@@ -61,26 +61,10 @@ const loginUser = asyncHandler(async (req, res) => {
   user.refreshToken = refreshToken;
   await user.save({ validateBeforeSave: false })
 
-  res
-    .cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 15 * 60 * 1000
-    })
-
-    .cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000
-    })
-
-
   const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
   return res.status(200).json(
-    new ApiResponse(200, loggedInUser, "Successfully logged in!!")
+    new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "Successfully logged in!!")
   )
 });
 
@@ -125,7 +109,7 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 
 //Generating new AccessToken from refreshToken
 const refreshAccessToken = asyncHandler(async (req, res) => {
-  const token = req.cookies?.refreshToken
+  const token = req.cookies?.refreshToken || req.body?.refreshToken
 
   if (!token) {
     throw new AppError(401, "Unauthorized request!!")
@@ -150,22 +134,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     user.refreshToken = newRefreshToken;
     await user.save({ validateBeforeSave: false });
 
-    res.cookie("accessToken", newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 15 * 60 * 1000
-    });
-
-    res.cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000
-    });
-
     return res.status(200).json(
-      new ApiResponse(200, {}, "AccessToken refreshed Successfully!!")
+      new ApiResponse(200, { accessToken: newAccessToken, refreshToken: newRefreshToken }, "AccessToken refreshed Successfully!!")
     )
   } catch (error) {
     throw new AppError(401, "Invalid or Expired RefreshToken!!")
@@ -189,16 +159,6 @@ const logoutUser = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .clearCookie("accessToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
-    .clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
     .json(new ApiResponse(200, {}, "User logout successfully!!"))
 })
 

@@ -28,10 +28,11 @@ export const AuthProvider = ({ children }) => {
                     localStorage.setItem("isLoggedIn", "true");
                 }
             } catch (error) {
-                // If verification fails, clear local data
                 setUser(null);
                 localStorage.removeItem("user");
                 localStorage.removeItem("isLoggedIn");
+                localStorage.removeItem("accessToken");
+                localStorage.removeItem("refreshToken");
             } finally {
                 setInitialized(true);
             }
@@ -46,11 +47,14 @@ export const AuthProvider = ({ children }) => {
         try {
             const response = await authAPI.login(credentials);
             if (response.success) {
-                setUser(response.data);
-                localStorage.setItem("user", JSON.stringify(response.data));
+                const { accessToken, refreshToken, user } = response.data;
+                localStorage.setItem("accessToken", accessToken);
+                localStorage.setItem("refreshToken", refreshToken);
+                localStorage.setItem("user", JSON.stringify(user));
                 localStorage.setItem("isLoggedIn", "true");
+                setUser(user);
                 toast.success(response.message || "Successfully logged in!");
-                return { success: true, data: response.data };
+                return { success: true };
             }
         } catch (error) {
             const message = error.message || "Login failed";
@@ -90,12 +94,16 @@ export const AuthProvider = ({ children }) => {
             setUser(null);
             localStorage.removeItem("user");
             localStorage.removeItem("isLoggedIn");
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("refreshToken");
             toast.success("Logged out successfully!");
         } catch (error) {
             // Even if API fails, clear local state
             setUser(null);
             localStorage.removeItem("user");
             localStorage.removeItem("isLoggedIn");
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("refreshToken");
             toast.error("Logout failed, but cleared local session");
         } finally {
             setLoading(false);
@@ -121,8 +129,25 @@ export const AuthProvider = ({ children }) => {
             console.error("Failed to refresh user data:", error);
         }
     };
+
+    // ADD this new function before the return
+    const setTokenAndUser = async (token, refresh) => {
+        localStorage.setItem("accessToken", token);
+        if (refresh) localStorage.setItem("refreshToken", refresh);
+        try {
+            const response = await authAPI.getCurrentUser();
+            if (response.success) {
+                setUser(response.data);
+                localStorage.setItem("user", JSON.stringify(response.data));
+                localStorage.setItem("isLoggedIn", "true");
+            }
+        } catch (error) {
+            console.error("Failed to fetch user after OAuth:", error);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, register, logout, updateUser, refreshUser, loading, initialized }}>
+        <AuthContext.Provider value={{ user, login, register, logout, updateUser, refreshUser, setTokenAndUser, loading, initialized }}>
             {children}
         </AuthContext.Provider>
     );

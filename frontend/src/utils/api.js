@@ -4,15 +4,15 @@ import axios from 'axios';
 // Create axios instance with default config
 const api = axios.create({
     baseURL: `${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/api/v1`,
-    withCredentials: true, // Important for cookies
 });
 
 // Request interceptor - DON'T set Content-Type, let browser handle it
 api.interceptors.request.use(
     (config) => {
-        // Let the browser set Content-Type automatically
-        // It will use multipart/form-data with boundary for FormData
-        // and application/json for regular objects
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
         return config;
     },
     (error) => Promise.reject(error)
@@ -29,18 +29,25 @@ api.interceptors.response.use(
         const shouldSkipRefresh = skipRefreshUrls.some(url => originalRequest.url?.includes(url));
 
         // If 401 and not already retried and not a login/auth endpoint, try to refresh token
+
         if (error.response?.status === 401 && !originalRequest._retry && !shouldSkipRefresh) {
             originalRequest._retry = true;
 
             try {
-                await api.post('/user/refreshAccessToken');
+                const refreshToken = localStorage.getItem('refreshToken');
+                const { data } = await api.post('/user/refreshAccessToken', { refreshToken });
+                const newToken = data?.data?.accessToken;
+                if (newToken) {
+                    localStorage.setItem('accessToken', newToken);
+                    originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                }
                 return api(originalRequest);
             } catch (refreshError) {
-                // Refresh failed, redirect to login
                 localStorage.removeItem('user');
                 localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
 
-                // ✅ Only redirect if NOT already on login page
                 if (window.location.pathname !== '/login') {
                     window.location.href = '/login';
                 }

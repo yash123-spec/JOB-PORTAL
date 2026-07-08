@@ -99,23 +99,10 @@ export const googleAuthCallback = asyncHandler(async (req, res) => {
     // Generate tokens
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
 
-    res.cookie("accessToken", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 15 * 60 * 1000           // 15 minutes
-    });
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-    });
-
-
-    // Redirect to frontend success page
-    res.redirect(`${process.env.FRONTEND_URL}/jobs`);
+    res.redirect(
+        `${process.env.FRONTEND_URL}/auth/callback?token=${accessToken}&refresh=${refreshToken}`
+    );
 });
 
 
