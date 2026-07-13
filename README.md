@@ -82,8 +82,8 @@ BullMQ handles anything that doesn't need to happen synchronously — email deli
 
 ## Live Demo
 
-Frontend: [firstchoice.vercel.app](https://firstchoice.vercel.app)  
-Backend: [firstchoice-api.onrender.com](https://firstchoice-api.onrender.com)
+Frontend: https://first-choice-one.vercel.app.
+Backend: https://firstchoice-api.onrender.com.
 
 ---
 
